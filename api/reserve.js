@@ -1,102 +1,48 @@
-// api/reserve.js — Static JSON file (read-only, permanent status via manual edits)
+const { createClient } = require('@supabase/supabase-js');
 
-const fs = require('fs');
-const path = require('path');
+// These will be pulled from Render's settings later
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
-const STATUS_FILE = path.join(__dirname, '../links-status.json');
+async function handleReserve(req, res) {
+  const method = req.method;
 
-let pool;
-try {
-  const data = fs.readFileSync(STATUS_FILE, 'utf8');
-  pool = JSON.parse(data);
-  console.log('Loaded static links-status.json');
-} catch (e) {
-  console.error('Failed to load links-status.json - using fallback', e);
-  pool = {
-    "100": { links: ["https://tinyurl.com/ye7dfa8x"], statuses: {"https://tinyurl.com/ye7dfa8x": "available"} },
-    "200": { links: ["https://tinyurl.com/2sxktakk"], statuses: {"https://tinyurl.com/2sxktakk": "available"} },
-    "300": { links: ["https://tinyurl.com/4xjmjnex"], statuses: {"https://tinyurl.com/4xjmjnex": "available"} },
-    "400": { links: ["https://tinyurl.com/3mrhab8w"], statuses: {"https://tinyurl.com/3mrhab8w": "available"} },
-    "500": { links: ["https://tinyurl.com/ym6akt52"], statuses: {"https://tinyurl.com/ym6akt52": "available"} },
-    "600": { links: ["https://tinyurl.com/568t4cz8"], statuses: {"https://tinyurl.com/568t4cz8": "available"} },
-    "700": { links: ["https://tinyurl.com/3aave7py"], statuses: {"https://tinyurl.com/3aave7py": "available"} },
-    "800": { links: ["https://tinyurl.com/ybu9ymsd"], statuses: {"https://tinyurl.com/ybu9ymsd": "available"} },
-  };
-}
+  if (method === 'GET') {
+    const { all, amount } = req.query;
 
-let reservations = new Map(); // temporary 90s "in-use"
-
-function cleanExpired() {
-  const now = Date.now();
-  for (const [link, data] of reservations.entries()) {
-    if (now - data.reservedAt > 90000) reservations.delete(link);
-  }
-}
-
-export default async function handler(req, res) {
-  cleanExpired();
-
-  if (req.method === 'GET' && req.query.all === 'true') {
-    const availability = {};
-    for (const amount in pool) {
-      const statuses = pool[amount].statuses || {};
-      let count = 0;
-      for (const url in statuses) {
-        if (statuses[url] === 'available' && !reservations.has(url)) count++;
-      }
-      availability[amount] = count;
-    }
-    return res.json({ availability });
-  }
-
-  if (req.method === 'GET') {
-    const { amount } = req.query;
-    if (!pool[amount]) return res.status(400).json({ error: 'Invalid amount' });
-
-    const statuses = pool[amount].statuses || {};
-    const available = [];
-    for (const url in statuses) {
-      if (statuses[url] === 'available' && !reservations.has(url)) available.push(url);
+    // Check how many links are left for the buttons
+    if (all === 'true') {
+      const { data } = await supabase.from('payment_links').select('amount').eq('status', 'available');
+      const counts = data.reduce((acc, curr) => {
+        acc[curr.amount] = (acc[curr.amount] || 0) + 1;
+        return acc;
+      }, {});
+      return res.json({ availability: counts });
     }
 
-    if (available.length === 0) {
-      return res.status(503).json({ error: 'No available links for this amount' });
-    }
+    // Grab a link and "lock" it for 90 seconds
+    const ninetySecsAgo = new Date(Date.now() - 90 * 1000).toISOString();
+    const { data: link } = await supabase
+      .from('payment_links')
+      .select('*')
+      .eq('amount', amount)
+      .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${ninetySecsAgo})`)
+      .limit(1).single();
 
-    const link = available[0];
-    reservations.set(link, { reservedAt: Date.now() });
+    if (!link) return res.status(404).json({ error: "No links left!" });
 
-    return res.json({ widgetUrl: link });
+    await supabase.from('payment_links')
+      .update({ status: 'reserved', reserved_at: new Date().toISOString() })
+      .eq('id', link.id);
+
+    return res.json({ widgetUrl: link.url });
   }
 
-  if (req.method === 'POST') {
+  if (method === 'POST') {
     const { link, action } = req.body;
-    if (!link || !action) return res.status(400).json({ error: 'Missing params' });
-
-    let amountFound = null;
-    for (const amt in pool) {
-      if (pool[amt].statuses && pool[amt].statuses[link]) {
-        amountFound = amt;
-        break;
-      }
-    }
-
-    if (!amountFound) return res.status(404).json({ error: 'Link not found' });
-
-    if (action === 'paid') {
-      pool[amountFound].statuses[link] = 'used';
-      reservations.delete(link);
-      console.log(`Marked as used: ${link} for $${amountFound} (manual file update needed)`);
-      return res.json({ success: true, message: 'Marked as used - please update links-status.json manually' });
-    }
-
-    if (action === 'cancel') {
-      pool[amountFound].statuses[link] = 'available';
-      reservations.delete(link);
-      console.log(`Released back: ${link} for $${amountFound} (manual file update needed)`);
-      return res.json({ success: true });
-    }
+    const newStatus = (action === 'paid') ? 'used' : 'available';
+    await supabase.from('payment_links').update({ status: newStatus, reserved_at: null }).eq('url', link);
+    return res.json({ success: true });
   }
-
-  res.status(405).json({ error: 'Method not allowed' });
 }
+
+module.exports = handleReserve;
