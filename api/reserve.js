@@ -1,35 +1,19 @@
-import { Redis } from '@upstash/redis';
+// api/reserve.js - Simple & Reliable using Vercel Blob
 
-// TEMP: Force overwrite on every request until stable (remove after 1 successful test)
-(async () => {
-  const initial = {
-    "100": ["https://tinyurl.com/ye7dfa8x"],
-    "200": ["https://tinyurl.com/2sxktakk"],
-    "300": ["https://tinyurl.com/4xjmjnex"],
-    "400": ["https://tinyurl.com/3mrhab8w"],
-    "500": ["https://tinyurl.com/ym6akt52"],
-    "600": ["https://tinyurl.com/568t4cz8"],
-    "700": ["https://tinyurl.com/3aave7py"],
-    "800": ["https://tinyurl.com/ybu9ymsd"],
-  };
-  await redis.set(POOL_KEY, JSON.stringify(initial));
-  console.log('FORCE OVERWRITE: Fresh pool saved on startup');
-})();
+import { put, get } from '@vercel/blob';
 
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL,
-  token: process.env.KV_REST_API_TOKEN,
-});
-
-const POOL_KEY = 'donation_links_pool';
+const BLOB_PATH = 'donation-links.json';
 
 async function getLinksPool() {
-  console.log('Fetching pool from Redis...');
-  const raw = await redis.get(POOL_KEY);
-  console.log('Raw from Redis:', raw, 'type:', typeof raw);
+  try {
+    const { url } = await get(BLOB_PATH);
+    if (!url) throw new Error('No blob');
 
-  if (!raw) {
-    console.log('Pool key missing - initializing');
+    const res = await fetch(url);
+    const pool = await res.json();
+    return pool;
+  } catch (e) {
+    // First time or deleted - create initial
     const initial = {
       "100": ["https://tinyurl.com/ye7dfa8x"],
       "200": ["https://tinyurl.com/2sxktakk"],
@@ -40,39 +24,19 @@ async function getLinksPool() {
       "700": ["https://tinyurl.com/3aave7py"],
       "800": ["https://tinyurl.com/ybu9ymsd"],
     };
-    await redis.set(POOL_KEY, JSON.stringify(initial));
-    console.log('Initial pool saved to Redis');
+    await saveLinksPool(initial);
     return initial;
   }
-
-  if (typeof raw === 'string') {
-    try {
-      const parsed = JSON.parse(raw);
-      console.log('Parsed pool successfully, counts:', 
-        Object.fromEntries(Object.entries(parsed).map(([k,v]) => [k, v.length]))
-      );
-      return parsed;
-    } catch (e) {
-      console.error('Parse failed - resetting pool', e, 'raw was:', raw);
-      const initial = { /* same initial object */ };
-      await redis.set(POOL_KEY, JSON.stringify(initial));
-      return initial;
-    }
-  }
-
-  // If somehow already an object (rare)
-  console.log('Raw is already object - using as is');
-  return raw;
 }
 
 async function saveLinksPool(pool) {
-  console.log('Saving pool with counts:', 
-    Object.fromEntries(Object.entries(pool).map(([k,v]) => [k, v.length]))
-  );
-  await redis.set(POOL_KEY, JSON.stringify(pool));
+  await put(BLOB_PATH, JSON.stringify(pool), {
+    access: 'public',
+    addRandomSuffix: false,
+  });
 }
 
-let reservations = new Map();
+let reservations = new Map(); // temporary 90s reservation
 
 function cleanExpired() {
   const now = Date.now();
@@ -91,10 +55,50 @@ export default async function handler(req, res) {
       const available = pool[amount].filter(l => !reservations.has(l));
       availability[amount] = available.length;
     }
-    console.log('Returning availability:', availability);
     return res.json({ availability });
   }
 
-  // ... rest of your handler code (GET reserve, POST paid/cancel) remains the same ...
-  // Make sure to use getLinksPool() and saveLinksPool() in those places too
+  if (req.method === 'GET') {
+    const { amount } = req.query;
+    const pool = await getLinksPool();
+    if (!pool[amount]) return res.status(400).json({ error: 'Invalid amount' });
+
+    const available = pool[amount].filter(l => !reservations.has(l));
+    if (available.length === 0) {
+      return res.status(503).json({ error: 'No available links' });
+    }
+
+    const link = available[0];
+    reservations.set(link, { reservedAt: Date.now() });
+
+    return res.json({ widgetUrl: link });
+  }
+
+  if (req.method === 'POST') {
+    const { link, action } = req.body;
+    if (!link || !action) return res.status(400).json({ error: 'Missing params' });
+
+    const pool = await getLinksPool();
+
+    if (action === 'paid') {
+      let removed = false;
+      for (const amt in pool) {
+        const before = pool[amt].length;
+        pool[amt] = pool[amt].filter(l => l !== link);
+        if (pool[amt].length < before) removed = true;
+      }
+      if (removed) {
+        await saveLinksPool(pool);
+      }
+      reservations.delete(link);
+      return res.json({ success: true });
+    }
+
+    if (action === 'cancel') {
+      reservations.delete(link);
+      return res.json({ success: true });
+    }
+  }
+
+  res.status(405).json({ error: 'Method not allowed' });
 }
