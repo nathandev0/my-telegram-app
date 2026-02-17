@@ -1,61 +1,38 @@
-// api/reserve.js - Vercel Blob - PERMANENT removal
+// api/reserve.js — Static JSON file (read-only, permanent status)
 
-import { put, get } from '@vercel/blob';
+const fs = require('fs');
+const path = require('path');
 
-const BLOB_PATH = 'donation-links.json';
+const STATUS_FILE = path.join(__dirname, '../links-status.json');
 
-async function getLinksPool() {
-  try {
-    const { url } = await get(BLOB_PATH);
-    if (!url) throw new Error('Blob not found');
-
-    const res = await fetch(url + '?_=' + Date.now());
-    if (!res.ok) throw new Error('Fetch failed: ' + res.status);
-
-    const pool = await res.json();
-    console.log('Loaded pool from Blob - counts:', 
-      Object.fromEntries(Object.entries(pool).map(([k,v]) => [k, v.length]))
-    );
-    return pool;
-  } catch (e) {
-    console.log('Blob missing or error - creating initial pool', e.message);
-    const initial = {
-      "100": ["https://tinyurl.com/ye7dfa8x"],
-      "200": ["https://tinyurl.com/2sxktakk"],
-      "300": ["https://tinyurl.com/4xjmjnex"],
-      "400": ["https://tinyurl.com/3mrhab8w"],
-      "500": ["https://tinyurl.com/ym6akt52"],
-      "600": ["https://tinyurl.com/568t4cz8"],
-      "700": ["https://tinyurl.com/3aave7py"],
-      "800": ["https://tinyurl.com/ybu9ymsd"],
-    };
-    await put(BLOB_PATH, JSON.stringify(initial), {
-      access: 'public',
-      addRandomSuffix: false,
-      allowOverwrite: true,
-    });
-    console.log('Initial pool created and saved to Blob');
-    return initial;
-  }
+let pool;
+try {
+  const data = fs.readFileSync(STATUS_FILE, 'utf8');
+  pool = JSON.parse(data);
+  console.log('Loaded static links-status.json');
+} catch (e) {
+  console.error('Failed to load links-status.json - using fallback', e);
+  pool = {
+    "100": { links: ["https://tinyurl.com/ye7dfa8x"], statuses: {"https://tinyurl.com/ye7dfa8x": "available"} },
+    "200": { links: ["https://tinyurl.com/2sxktakk"], statuses: {"https://tinyurl.com/2sxktakk": "available"} },
+    "300": { links: ["https://tinyurl.com/4xjmjnex"], statuses: {"https://tinyurl.com/4xjmjnex": "available"} },
+    "400": { links: ["https://tinyurl.com/3mrhab8w"], statuses: {"https://tinyurl.com/3mrhab8w": "available"} },
+    "500": { links: ["https://tinyurl.com/ym6akt52"], statuses: {"https://tinyurl.com/ym6akt52": "available"} },
+    "600": { links: ["https://tinyurl.com/568t4cz8"], statuses: {"https://tinyurl.com/568t4cz8": "available"} },
+    "700": { links: ["https://tinyurl.com/3aave7py"], statuses: {"https://tinyurl.com/3aave7py": "available"} },
+    "800": { links: ["https://tinyurl.com/ybu9ymsd"], statuses: {"https://tinyurl.com/ybu9ymsd": "available"} },
+  };
 }
 
-async function saveLinksPool(pool) {
-  await put(BLOB_PATH, JSON.stringify(pool), {
-    access: 'public',
-    addRandomSuffix: false,
-    allowOverwrite: true,
-  });
-  console.log('Saved updated pool to Blob - counts:', 
-    Object.fromEntries(Object.entries(pool).map(([k,v]) => [k, v.length]))
-  );
-}
-
-let reservations = new Map(); // temporary 90s reservation
+let reservations = new Map(); // temporary 90s "in-use"
 
 function cleanExpired() {
   const now = Date.now();
   for (const [link, data] of reservations.entries()) {
-    if (now - data.reservedAt > 90000) reservations.delete(link);
+    if (now - data.reservedAt > 90000) {
+      reservations.delete(link);
+      // Optional: update status back to "available" if needed (but not necessary here)
+    }
   }
 }
 
@@ -63,23 +40,28 @@ export default async function handler(req, res) {
   cleanExpired();
 
   if (req.method === 'GET' && req.query.all === 'true') {
-    const pool = await getLinksPool();
     const availability = {};
     for (const amount in pool) {
-      const available = pool[amount].filter(l => !reservations.has(l));
-      availability[amount] = available.length;
+      const statuses = pool[amount].statuses || {};
+      let count = 0;
+      for (const url in statuses) {
+        if (statuses[url] === 'available' && !reservations.has(url)) count++;
+      }
+      availability[amount] = count;
     }
     return res.json({ availability });
   }
 
   if (req.method === 'GET') {
     const { amount } = req.query;
-    if (!amount) return res.status(400).json({ error: 'Missing amount' });
-
-    const pool = await getLinksPool();
     if (!pool[amount]) return res.status(400).json({ error: 'Invalid amount' });
 
-    const available = pool[amount].filter(l => !reservations.has(l));
+    const statuses = pool[amount].statuses || {};
+    const available = [];
+    for (const url in statuses) {
+      if (statuses[url] === 'available' && !reservations.has(url)) available.push(url);
+    }
+
     if (available.length === 0) {
       return res.status(503).json({ error: 'No available links for this amount' });
     }
@@ -94,28 +76,28 @@ export default async function handler(req, res) {
     const { link, action } = req.body;
     if (!link || !action) return res.status(400).json({ error: 'Missing params' });
 
-    const pool = await getLinksPool();
+    let amountFound = null;
+    for (const amt in pool) {
+      if (pool[amt].statuses && pool[amt].statuses[link]) {
+        amountFound = amt;
+        break;
+      }
+    }
+
+    if (!amountFound) return res.status(404).json({ error: 'Link not found' });
 
     if (action === 'paid') {
-      let removed = false;
-      for (const amt in pool) {
-        const before = pool[amt].length;
-        pool[amt] = pool[amt].filter(l => l !== link);
-        if (pool[amt].length < before) removed = true;
-      }
-      if (removed) {
-        await saveLinksPool(pool);
-        console.log('PERMANENTLY REMOVED paid link:', link);
-      } else {
-        console.log('Paid link not found in pool:', link);
-      }
+      pool[amountFound].statuses[link] = 'used';
+      // Here you would normally write back to file, but since static → manual
       reservations.delete(link);
-      return res.json({ success: true });
+      console.log(`Marked as used: ${link} for $${amountFound} (manual file update needed)`);
+      return res.json({ success: true, message: 'Marked as used - please update links-status.json manually' });
     }
 
     if (action === 'cancel') {
+      pool[amountFound].statuses[link] = 'available';
       reservations.delete(link);
-      console.log('Released link back to pool:', link);
+      console.log(`Released back: ${link} for $${amountFound} (manual file update needed)`);
       return res.json({ success: true });
     }
   }
