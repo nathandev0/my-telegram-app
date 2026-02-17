@@ -1,4 +1,4 @@
-// api/reserve.js - Robust version with aggressive reset on corruption
+// api/reserve.js - Persistent with Upstash Redis (Vercel KV)
 
 import { Redis } from '@upstash/redis';
 
@@ -7,7 +7,7 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN,
 });
 
-// Per-amount key (prevents race on full pool)
+// Per-amount key to avoid race conditions on full pool
 function amountKey(amount) {
   return `donation_links:${amount}`;
 }
@@ -19,20 +19,20 @@ async function getLinksForAmount(amount) {
   console.log(`[GET ${amount}] Raw Redis value:`, raw, '(type:', typeof raw, ')');
 
   if (!raw || typeof raw !== 'string') {
-    console.log(`[RESET ${amount}] No valid data - initializing`);
+    console.log(`[INIT ${amount}] No valid data - creating initial links`);
     return await initializeAmount(amount);
   }
 
   try {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) {
-      console.log(`[RESET ${amount}] Not an array - resetting`);
+      console.log(`[RESET ${amount}] Value is not an array - resetting`);
       return await initializeAmount(amount);
     }
     console.log(`[SUCCESS ${amount}] Loaded ${parsed.length} links`);
     return parsed;
   } catch (e) {
-    console.error(`[CORRUPTED ${amount}]`, e.message, 'Raw:', raw);
+    console.error(`[CORRUPTED ${amount}]`, e.message, 'Raw value was:', raw);
     return await initializeAmount(amount);
   }
 }
@@ -50,24 +50,24 @@ async function initializeAmount(amount) {
 
   const key = amountKey(amount);
   await redis.set(key, JSON.stringify(initial));
-  console.log(`[INIT ${amount}] Saved fresh ${initial.length} links`);
+  console.log(`[INIT ${amount}] Saved fresh ${initial.length} links to ${key}`);
   return initial;
 }
 
 async function saveLinksForAmount(amount, links) {
   const key = amountKey(amount);
-  console.log(`[SAVE ${amount}] Saving ${links.length} links`);
+  console.log(`[SAVE ${amount}] Saving ${links.length} links to ${key}`);
   await redis.set(key, JSON.stringify(links));
 }
 
-let reservations = new Map();
+let reservations = new Map(); // temporary 90-second reservations
 
 function cleanExpired() {
   const now = Date.now();
   for (const [link, data] of reservations.entries()) {
     if (now - data.reservedAt > 90000) {
       reservations.delete(link);
-      console.log('[EXPIRE] Released:', link);
+      console.log('[EXPIRE] Released reservation:', link);
     }
   }
 }
@@ -75,41 +75,43 @@ function cleanExpired() {
 export default async function handler(req, res) {
   cleanExpired();
 
-  // GET all availability
+  // GET /api/reserve?all=true → availability for all amounts
   if (req.method === 'GET' && req.query.all === 'true') {
     const availability = {};
     for (const amount of ['100','200','300','400','500','600','700','800']) {
       const links = await getLinksForAmount(amount);
-      const available = links.filter(l => !reservations.has(l));
+      const available = links.filter(link => !reservations.has(link));
       availability[amount] = available.length;
     }
     return res.json({ availability });
   }
 
-  // GET - reserve
+  // GET /api/reserve?amount=XXX → reserve one link
   if (req.method === 'GET') {
     const { amount } = req.query;
-    if (!amount) return res.status(400).json({ error: 'Missing amount' });
+    if (!amount) return res.status(400).json({ error: 'Missing amount parameter' });
 
     const links = await getLinksForAmount(amount);
-    const available = links.filter(l => !reservations.has(l));
+    const available = links.filter(link => !reservations.has(link));
 
     if (available.length === 0) {
-      return res.status(503).json({ error: 'No available links' });
+      return res.status(503).json({ error: 'No available links for this amount (all reserved or used)' });
     }
 
     const link = available[0];
     reservations.set(link, { reservedAt: Date.now() });
-    console.log(`[RESERVE ${amount}] ${link}`);
+    console.log(`[RESERVE ${amount}] Reserved: ${link}`);
 
     return res.json({ widgetUrl: link });
   }
 
-  // POST - paid or cancel
+  // POST /api/reserve → paid or cancel
   if (req.method === 'POST') {
     const { link, action } = req.body;
-    if (!link || !action) return res.status(400).json({ error: 'Missing params' });
 
+    if (!link || !action) return res.status(400).json({ error: 'Missing link or action' });
+
+    // Find which amount owns this link
     let amountFound = null;
     for (const amt of ['100','200','300','400','500','600','700','800']) {
       const links = await getLinksForAmount(amt);
@@ -119,7 +121,7 @@ export default async function handler(req, res) {
       }
     }
 
-    if (!amountFound) return res.status(404).json({ error: 'Link not found' });
+    if (!amountFound) return res.status(404).json({ error: 'Link not found in any pool' });
 
     if (action === 'paid') {
       let links = await getLinksForAmount(amountFound);
@@ -127,7 +129,9 @@ export default async function handler(req, res) {
       links = links.filter(l => l !== link);
       if (links.length < before) {
         await saveLinksForAmount(amountFound, links);
-        console.log(`[PAID ${amountFound}] Removed ${link}`);
+        console.log(`[PAID ${amountFound}] Permanently removed: ${link}`);
+      } else {
+        console.warn(`[PAID ${amountFound}] Link not found: ${link}`);
       }
       reservations.delete(link);
       return res.json({ success: true });
@@ -135,11 +139,11 @@ export default async function handler(req, res) {
 
     if (action === 'cancel') {
       reservations.delete(link);
-      console.log(`[CANCEL] Released ${link}`);
+      console.log(`[CANCEL ${amountFound}] Released: ${link}`);
       return res.json({ success: true });
     }
 
-    return res.status(400).json({ error: 'Invalid action' });
+    return res.status(400).json({ error: 'Invalid action (must be "paid" or "cancel")' });
   }
 
   res.status(405).json({ error: 'Method not allowed' });
