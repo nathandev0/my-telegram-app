@@ -7,9 +7,9 @@ const BLOB_PATH = 'donation-links.json';
 async function getLinksPool() {
   try {
     const { url } = await get(BLOB_PATH);
-    if (!url) throw new Error('No blob');
+    if (!url) throw new Error('Blob not found');
 
-    const res = await fetch(url + '?_=' + Date.now()); // prevent browser cache
+    const res = await fetch(url + '?_=' + Date.now());
     if (!res.ok) throw new Error('Fetch failed');
 
     const pool = await res.json();
@@ -45,10 +45,12 @@ async function saveLinksPool(pool) {
     addRandomSuffix: false,
     allowOverwrite: true,
   });
-  console.log('Updated pool saved to Blob');
+  console.log('Updated pool saved to Blob — counts:', 
+    Object.fromEntries(Object.entries(pool).map(([k,v]) => [k, v.length]))
+  );
 }
 
-let reservations = new Map(); // temporary 90-second reservations
+let reservations = new Map(); // temporary 90s reservation
 
 function cleanExpired() {
   const now = Date.now();
