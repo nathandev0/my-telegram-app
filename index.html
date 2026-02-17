@@ -258,33 +258,40 @@
     }
 
     async function renderButtons() {
-      const availability = await fetchAvailability();
-      const grid = document.getElementById('buttons');
-      grid.innerHTML = '';
+    const availability = await fetchAvailability();
+    const grid = document.getElementById('buttons');
+    grid.innerHTML = '';
 
-      [100,200,300,400,500,600,700,800].forEach(amount => {
+    [100, 200, 300, 400, 500, 600, 700, 800].forEach(amount => {
         const btn = document.createElement('button');
         btn.className = 'donation-btn';
         const availCount = availability[amount] || 0;
         const isCooldown = cooldownTimers.has(amount);
 
+        // Disable if: no links, flow active, or in cooldown
         btn.disabled = availCount === 0 || isFlowActive || isCooldown;
-        if (isFlowActive || isCooldown) btn.classList.add('flow-active');
 
+        // Visual feedback for disabled/active states
+        if (isFlowActive || isCooldown) {
+        btn.classList.add('flow-active');
+        }
+
+        // Small counter in top-right corner (only when low)
         let counterHTML = '';
         if (availCount > 0 && availCount < 4) {
-          counterHTML = `<span class="counter">${availCount}</span>`;
+        counterHTML = `<span class="counter">${availCount}</span>`;
         }
 
         btn.innerHTML = `$${amount}${counterHTML}`;
 
+        // Click handler
         btn.addEventListener('click', () => {
-          if (btn.disabled) return;
-          reserveAndOpen(amount, btn);
+        if (btn.disabled) return;
+        reserveAndOpen(amount, btn);
         });
 
         grid.appendChild(btn);
-      });
+    });
     }
 
     async function reserveAndOpen(amount, buttonEl) {

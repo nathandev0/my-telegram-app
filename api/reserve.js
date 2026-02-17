@@ -1,4 +1,4 @@
-// api/reserve.js — Static JSON file (read-only, permanent status)
+// api/reserve.js — Static JSON file (read-only, permanent status via manual edits)
 
 const fs = require('fs');
 const path = require('path');
@@ -29,10 +29,7 @@ let reservations = new Map(); // temporary 90s "in-use"
 function cleanExpired() {
   const now = Date.now();
   for (const [link, data] of reservations.entries()) {
-    if (now - data.reservedAt > 90000) {
-      reservations.delete(link);
-      // Optional: update status back to "available" if needed (but not necessary here)
-    }
+    if (now - data.reservedAt > 90000) reservations.delete(link);
   }
 }
 
@@ -88,7 +85,6 @@ export default async function handler(req, res) {
 
     if (action === 'paid') {
       pool[amountFound].statuses[link] = 'used';
-      // Here you would normally write back to file, but since static → manual
       reservations.delete(link);
       console.log(`Marked as used: ${link} for $${amountFound} (manual file update needed)`);
       return res.json({ success: true, message: 'Marked as used - please update links-status.json manually' });
