@@ -1,5 +1,3 @@
-// api/reserve.js - Persistent with Upstash Redis (Vercel KV)
-
 import { Redis } from '@upstash/redis';
 
 const redis = new Redis({
@@ -7,47 +5,50 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN,
 });
 
-const LINKS_KEY = 'donation_links_pool';
-
-async function getLinksPool() {
-  const raw = await redis.get(LINKS_KEY);
-  console.log('Raw value from Redis:', raw, typeof raw);
-
-  // Force reset for this deploy only (remove after one successful test)
-  const initial = {
-    "100": ["https://tinyurl.com/ye7dfa8x"],
-    "200": ["https://tinyurl.com/2sxktakk"],
-    "300": ["https://tinyurl.com/4xjmjnex"],
-    "400": ["https://tinyurl.com/3mrhab8w"],
-    "500": ["https://tinyurl.com/ym6akt52"],
-    "600": ["https://tinyurl.com/568t4cz8"],
-    "700": ["https://tinyurl.com/3aave7py"],
-    "800": ["https://tinyurl.com/ybu9ymsd"],
-  };
-  await redis.set(LINKS_KEY, JSON.stringify(initial));
-  console.log('Forced fresh pool save');
-  return initial;
-
-  // After one good test, remove the force block above and keep only this:
-  // if (!raw) { ... initialize ... }
-  // try { return JSON.parse(raw); } catch (e) { ... reset ... }
+// Key per amount to avoid race on full pool
+function amountKey(amount) {
+  return `donation_links:${amount}`;
 }
 
-async function saveLinksPool(pool) {
-  console.log('Saving updated pool to Redis, counts:', 
-    Object.fromEntries(Object.entries(pool).map(([k, v]) => [k, v.length]))
-  );
-  await redis.set(LINKS_KEY, JSON.stringify(pool));
+async function getLinksForAmount(amount) {
+  const raw = await redis.get(amountKey(amount));
+  if (!raw) {
+    let initial = [];
+    if (amount === '100') initial = ["https://tinyurl.com/ye7dfa8x"];
+    if (amount === '200') initial = ["https://tinyurl.com/2sxktakk"];
+    if (amount === '300') initial = ["https://tinyurl.com/4xjmjnex"];
+    if (amount === '400') initial = ["https://tinyurl.com/3mrhab8w"];
+    if (amount === '500') initial = ["https://tinyurl.com/ym6akt52"];
+    if (amount === '600') initial = ["https://tinyurl.com/568t4cz8"];
+    if (amount === '700') initial = ["https://tinyurl.com/3aave7py"];
+    if (amount === '800') initial = ["https://tinyurl.com/ybu9ymsd"];
+    await redis.set(amountKey(amount), JSON.stringify(initial));
+    return initial;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error(`Corrupted data for ${amount} - resetting`, e);
+    // Reset for this amount
+    let initial = [];
+    if (amount === '100') initial = ["https://tinyurl.com/ye7dfa8x"];
+    // ... add others
+    await redis.set(amountKey(amount), JSON.stringify(initial));
+    return initial;
+  }
 }
 
-let reservations = new Map(); // temporary 90-second holds
+async function saveLinksForAmount(amount, links) {
+  await redis.set(amountKey(amount), JSON.stringify(links));
+}
+
+let reservations = new Map();
 
 function cleanExpired() {
   const now = Date.now();
   for (const [link, data] of reservations.entries()) {
     if (now - data.reservedAt > 90000) {
       reservations.delete(link);
-      console.log('Expired reservation released:', link);
     }
   }
 }
@@ -55,70 +56,62 @@ function cleanExpired() {
 export default async function handler(req, res) {
   cleanExpired();
 
-  // GET /api/reserve?all=true → availability for all amounts
   if (req.method === 'GET' && req.query.all === 'true') {
-    const pool = await getLinksPool();
     const availability = {};
-    for (const amount in pool) {
-      const available = pool[amount].filter(link => !reservations.has(link));
+    for (const amount of ['100','200','300','400','500','600','700','800']) {
+      const links = await getLinksForAmount(amount);
+      const available = links.filter(link => !reservations.has(link));
       availability[amount] = available.length;
     }
     return res.json({ availability });
   }
 
-  // GET /api/reserve?amount=XXX → reserve one link
   if (req.method === 'GET') {
     const { amount } = req.query;
-    if (!amount) return res.status(400).json({ error: 'Missing amount parameter' });
+    if (!amount) return res.status(400).json({ error: 'Missing amount' });
 
-    const pool = await getLinksPool();
-    if (!pool[amount]) return res.status(400).json({ error: 'Invalid amount' });
-
-    const available = pool[amount].filter(link => !reservations.has(link));
+    const links = await getLinksForAmount(amount);
+    const available = links.filter(link => !reservations.has(link));
 
     if (available.length === 0) {
-      return res.status(503).json({ error: 'No available links for this amount (all reserved or used)' });
+      return res.status(503).json({ error: 'No available links' });
     }
 
     const link = available[0];
     reservations.set(link, { reservedAt: Date.now() });
-    console.log('Reserved link for $' + amount + ':', link);
 
     return res.json({ widgetUrl: link });
   }
 
-  // POST /api/reserve → confirm paid or cancel reservation
   if (req.method === 'POST') {
     const { link, action } = req.body;
 
-    if (!link || !action) return res.status(400).json({ error: 'Missing link or action' });
+    if (!link || !action) return res.status(400).json({ error: 'Missing params' });
 
-    const pool = await getLinksPool();
+    // Find which amount this link belongs to
+    let amountFound = null;
+    for (const amt of ['100','200','300','400','500','600','700','800']) {
+      const links = await getLinksForAmount(amt);
+      if (links.includes(link)) {
+        amountFound = amt;
+        break;
+      }
+    }
+
+    if (!amountFound) return res.status(404).json({ error: 'Link not found' });
 
     if (action === 'paid') {
-      let removed = false;
-      for (const amt in pool) {
-        const before = pool[amt].length;
-        pool[amt] = pool[amt].filter(l => l !== link);
-        if (pool[amt].length < before) removed = true;
-      }
-      if (removed) {
-        await saveLinksPool(pool);
-        console.log('Permanently removed paid link:', link);
-      } else {
-        console.warn('Paid link not found in pool:', link);
-      }
+      let links = await getLinksForAmount(amountFound);
+      links = links.filter(l => l !== link);
+      await saveLinksForAmount(amountFound, links);
       reservations.delete(link);
-      return res.json({ success: true, message: 'Payment confirmed - link removed' });
+      return res.json({ success: true });
     }
 
     if (action === 'cancel') {
       reservations.delete(link);
-      console.log('Cancelled reservation for link:', link);
-      return res.json({ success: true, message: 'Reservation cancelled - link released' });
+      return res.json({ success: true });
     }
-
-    return res.status(400).json({ error: 'Invalid action (must be "paid" or "cancel")' });
   }
 
   res.status(405).json({ error: 'Method not allowed' });
