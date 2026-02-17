@@ -3,52 +3,133 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Donation Mini App</title>
+  <title>Support Me</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
+    :root {
+      --primary: #0066ff;
+      --primary-dark: #0055d4;
+      --text: #1a1a1a;
+      --gray: #6b7280;
+      --light-gray: #f3f4f6;
+    }
+
     body {
-      font-family: system-ui, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       margin: 0;
-      padding: 20px;
-      background: var(--tg-theme-bg-color, #f0f0f0);
-      color: var(--tg-theme-text-color, #000);
+      padding: 24px 16px;
+      background: white;
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
       text-align: center;
     }
-    h1 { margin-bottom: 8px; font-size: 2.4em; }
-    .subtitle { color: #4CAF50; margin-bottom: 24px; }
+
+    h1 {
+      font-size: 2.8rem;
+      font-weight: 800;
+      margin: 0 0 8px;
+      letter-spacing: -0.5px;
+      color: var(--text);
+    }
+
+    .subtitle {
+      font-size: 1.1rem;
+      color: var(--gray);
+      margin: 0 0 32px;
+      max-width: 360px;
+    }
+
     .buttons {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
       gap: 16px;
-      max-width: 420px;
-      margin: 0 auto;
+      width: 100%;
+      max-width: 440px;
+      margin-bottom: 32px;
     }
+
     button {
-      padding: 18px;
-      font-size: 1.3em;
-      font-weight: bold;
-      border: 2px solid #007aff;
-      border-radius: 16px;
+      position: relative;
+      padding: 22px 16px;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--primary);
       background: white;
-      color: #007aff;
+      border: 2px solid transparent;
+      border-radius: 20px;
       cursor: pointer;
+      transition: all 0.25s ease;
+      box-shadow: 0 4px 12px rgba(0, 102, 255, 0.08);
+      overflow: hidden;
     }
+
+    button::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 20px;
+      padding: 2px;
+      background: linear-gradient(135deg, #0066ff, #00d4ff);
+      -webkit-mask: 
+        linear-gradient(#fff 0 0) content-box, 
+        linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+
+    button:hover:not(:disabled) {
+      transform: translateY(-3px);
+      box-shadow: 0 12px 24px rgba(0, 102, 255, 0.18);
+    }
+
+    button:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: 0 4px 12px rgba(0, 102, 255, 0.12);
+    }
+
     button:disabled {
-      opacity: 0.5;
+      color: #9ca3af;
+      background: #f3f4f6;
+      box-shadow: none;
       cursor: not-allowed;
-      border-color: #ccc;
-      color: #ccc;
+      transform: none;
     }
+
+    button:disabled::before {
+      opacity: 0;
+    }
+
     #status {
-      margin-top: 24px;
-      font-size: 1.1em;
-      min-height: 1.5em;
+      font-size: 1.05rem;
+      color: var(--gray);
+      min-height: 1.6em;
+      margin-top: 16px;
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+
+    #status.show {
+      opacity: 1;
+    }
+
+    @media (max-width: 400px) {
+      .buttons {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+      h1 { font-size: 2.4rem; }
+      button { font-size: 1.35rem; padding: 20px 12px; }
     }
   </style>
 </head>
 <body>
-  <h1>Support Us</h1>
-  <div class="subtitle">Choose donation amount</div>
+  <h1>Support Me</h1>
+  <div class="subtitle">Choose your donation amount</div>
 
   <div class="buttons">
     <button data-amount="100">$100</button>
@@ -68,7 +149,6 @@
     tg.ready();
     tg.expand();
 
-    // Paste the JSON from generate-links.js here
     const linksPool = {
       "100": ["https://tinyurl.com/ye7dfa8x"],
       "200": ["https://tinyurl.com/2sxktakk"],
@@ -80,50 +160,49 @@
       "800": ["https://tinyurl.com/ybu9ymsd"],
     };
 
-    // Simple in-memory used tracking (resets on reload — later use backend/storage)
-const usedLinks = new Set(); // in-memory tracking (resets on reload)
+    const usedLinks = new Set();
+    const statusEl = document.getElementById('status');
 
-const status = document.getElementById('status');
+    document.querySelectorAll('button[data-amount]').forEach(btn => {
+      const amount = btn.dataset.amount;
 
-document.querySelectorAll('button[data-amount]').forEach(btn => {
-  const amount = btn.dataset.amount;
-
-  function updateButton() {
-    const available = (linksPool[amount] || []).filter(url => !usedLinks.has(url));
-    btn.disabled = available.length === 0;
-    btn.textContent = available.length === 0 ? `$${amount} (out)` : `$${amount}`;
-  }
-
-  updateButton();
-
-  btn.addEventListener('click', () => {
-    const available = (linksPool[amount] || []).filter(url => !usedLinks.has(url));
-    if (available.length === 0) {
-      tg.showAlert(`No available links for $${amount}`);
-      return;
-    }
-
-    const widgetUrl = available[0];
-    usedLinks.add(widgetUrl);
-
-    status.textContent = `Redirecting to $${amount} payment...`;
-
-    // The only method you want — full redirect
-    window.location.href = widgetUrl;
-
-    // Optional: fallback alert if redirect is blocked (rare)
-    setTimeout(() => {
-      if (document.body.innerHTML.includes('Donation')) {  // still on original page
-        tg.showAlert('Redirect failed. Please try again or open in browser.');
+      function updateButton() {
+        const available = (linksPool[amount] || []).filter(url => !usedLinks.has(url));
+        btn.disabled = available.length === 0;
+        btn.textContent = available.length === 0 ? `$${amount} – Sold out` : `$${amount}`;
       }
-    }, 1500);
 
-    updateButton();
-  });
-});
+      updateButton();
 
-tg.MainButton.hide();
-    </script>
-    <div id="webview-container"></div>
+      btn.addEventListener('click', () => {
+        const available = (linksPool[amount] || []).filter(url => !usedLinks.has(url));
+        if (available.length === 0) {
+          tg.showAlert(`No more available links for $${amount}`);
+          return;
+        }
+
+        const widgetUrl = available[0];
+        usedLinks.add(widgetUrl);
+
+        statusEl.textContent = `Redirecting to $${amount} payment...`;
+        statusEl.classList.add('show');
+
+        // The requested redirect method
+        window.location.href = widgetUrl;
+
+        // Fallback detection (in case redirect is blocked)
+        setTimeout(() => {
+          if (document.body.innerHTML.includes('Support Me')) {
+            tg.showAlert('Could not redirect automatically. Tap the button again or open in browser.');
+            statusEl.classList.remove('show');
+          }
+        }, 1800);
+
+        updateButton();
+      });
+    });
+
+    tg.MainButton.hide();
+  </script>
 </body>
 </html>
