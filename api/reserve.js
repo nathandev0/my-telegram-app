@@ -1,5 +1,21 @@
 import { Redis } from '@upstash/redis';
 
+// TEMP: Force overwrite on every request until stable (remove after 1 successful test)
+(async () => {
+  const initial = {
+    "100": ["https://tinyurl.com/ye7dfa8x"],
+    "200": ["https://tinyurl.com/2sxktakk"],
+    "300": ["https://tinyurl.com/4xjmjnex"],
+    "400": ["https://tinyurl.com/3mrhab8w"],
+    "500": ["https://tinyurl.com/ym6akt52"],
+    "600": ["https://tinyurl.com/568t4cz8"],
+    "700": ["https://tinyurl.com/3aave7py"],
+    "800": ["https://tinyurl.com/ybu9ymsd"],
+  };
+  await redis.set(POOL_KEY, JSON.stringify(initial));
+  console.log('FORCE OVERWRITE: Fresh pool saved on startup');
+})();
+
 const redis = new Redis({
   url: process.env.KV_REST_API_URL,
   token: process.env.KV_REST_API_TOKEN,
