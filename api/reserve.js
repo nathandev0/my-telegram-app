@@ -1,5 +1,3 @@
-// api/reserve.js - Final clean version with proper initialization
-
 import { Redis } from '@upstash/redis';
 
 const redis = new Redis({
@@ -7,57 +5,50 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN,
 });
 
-function amountKey(amount) {
-  return `donation_links:${amount}`;
-}
+const LINKS_KEY = 'donation_links_pool';
 
-async function getLinksForAmount(amount) {
-  const key = amountKey(amount);
-  let raw = await redis.get(key);
+async function getLinksPool() {
+  let raw = await redis.get(LINKS_KEY);
 
   if (!raw) {
-    console.log(`[INIT ${amount}] No data found - creating initial links`);
-    return await initializeAmount(amount);
+    const initial = {
+      "100": ["https://tinyurl.com/ye7dfa8x"],
+      "200": ["https://tinyurl.com/2sxktakk"],
+      "300": ["https://tinyurl.com/4xjmjnex"],
+      "400": ["https://tinyurl.com/3mrhab8w"],
+      "500": ["https://tinyurl.com/ym6akt52"],
+      "600": ["https://tinyurl.com/568t4cz8"],
+      "700": ["https://tinyurl.com/3aave7py"],
+      "800": ["https://tinyurl.com/ybu9ymsd"],
+    };
+    await redis.set(LINKS_KEY, JSON.stringify(initial));
+    return initial;
   }
 
   try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      console.log(`[LOAD ${amount}] Loaded ${parsed.length} links`);
-      return parsed;
-    }
+    return JSON.parse(raw);
   } catch (e) {
-    console.error(`[CORRUPTED ${amount}] Resetting`, e.message);
+    console.error('Redis data corrupted - resetting pool', e, raw);
+    const initial = {
+      "100": ["https://tinyurl.com/ye7dfa8x"],
+      "200": ["https://tinyurl.com/2sxktakk"],
+      "300": ["https://tinyurl.com/4xjmjnex"],
+      "400": ["https://tinyurl.com/3mrhab8w"],
+      "500": ["https://tinyurl.com/ym6akt52"],
+      "600": ["https://tinyurl.com/568t4cz8"],
+      "700": ["https://tinyurl.com/3aave7py"],
+      "800": ["https://tinyurl.com/ybu9ymsd"],
+    };
+    await redis.set(LINKS_KEY, JSON.stringify(initial));
+    return initial;
   }
-
-  console.log(`[RESET ${amount}] Invalid data - reinitializing`);
-  return await initializeAmount(amount);
 }
 
-async function initializeAmount(amount) {
-  let initial = [];
-  if (amount === '100') initial = ["https://tinyurl.com/ye7dfa8x"];
-  if (amount === '200') initial = ["https://tinyurl.com/2sxktakk"];
-  if (amount === '300') initial = ["https://tinyurl.com/4xjmjnex"];
-  if (amount === '400') initial = ["https://tinyurl.com/3mrhab8w"];
-  if (amount === '500') initial = ["https://tinyurl.com/ym6akt52"];
-  if (amount === '600') initial = ["https://tinyurl.com/568t4cz8"];
-  if (amount === '700') initial = ["https://tinyurl.com/3aave7py"];
-  if (amount === '800') initial = ["https://tinyurl.com/ybu9ymsd"];
-
-  const key = amountKey(amount);
-  await redis.set(key, JSON.stringify(initial));
-  console.log(`[INIT ${amount}] Saved ${initial.length} fresh links`);
-  return initial;
+async function saveLinksPool(pool) {
+  await redis.set(LINKS_KEY, JSON.stringify(pool));
 }
 
-async function saveLinksForAmount(amount, links) {
-  const key = amountKey(amount);
-  await redis.set(key, JSON.stringify(links));
-  console.log(`[SAVE ${amount}] Saved ${links.length} links`);
-}
-
-let reservations = new Map();
+let reservations = new Map(); // temporary 90s
 
 function cleanExpired() {
   const now = Date.now();
@@ -70,10 +61,10 @@ export default async function handler(req, res) {
   cleanExpired();
 
   if (req.method === 'GET' && req.query.all === 'true') {
+    const pool = await getLinksPool();
     const availability = {};
-    for (const amount of ['100','200','300','400','500','600','700','800']) {
-      const links = await getLinksForAmount(amount);
-      const available = links.filter(l => !reservations.has(l));
+    for (const amount in pool) {
+      const available = pool[amount].filter(link => !reservations.has(link));
       availability[amount] = available.length;
     }
     return res.json({ availability });
@@ -83,8 +74,10 @@ export default async function handler(req, res) {
     const { amount } = req.query;
     if (!amount) return res.status(400).json({ error: 'Missing amount' });
 
-    const links = await getLinksForAmount(amount);
-    const available = links.filter(l => !reservations.has(l));
+    const pool = await getLinksPool();
+    if (!pool[amount]) return res.status(400).json({ error: 'Invalid amount' });
+
+    const available = pool[amount].filter(link => !reservations.has(link));
 
     if (available.length === 0) {
       return res.status(503).json({ error: 'No available links for this amount' });
@@ -100,21 +93,18 @@ export default async function handler(req, res) {
     const { link, action } = req.body;
     if (!link || !action) return res.status(400).json({ error: 'Missing params' });
 
-    let amountFound = null;
-    for (const amt of ['100','200','300','400','500','600','700','800']) {
-      const links = await getLinksForAmount(amt);
-      if (links.includes(link)) {
-        amountFound = amt;
-        break;
-      }
-    }
-
-    if (!amountFound) return res.status(404).json({ error: 'Link not found' });
+    const pool = await getLinksPool();
 
     if (action === 'paid') {
-      let links = await getLinksForAmount(amountFound);
-      links = links.filter(l => l !== link);
-      await saveLinksForAmount(amountFound, links);
+      let removed = false;
+      for (const amt in pool) {
+        const before = pool[amt].length;
+        pool[amt] = pool[amt].filter(l => l !== link);
+        if (pool[amt].length < before) removed = true;
+      }
+      if (removed) {
+        await saveLinksPool(pool);
+      }
       reservations.delete(link);
       return res.json({ success: true });
     }
@@ -123,6 +113,8 @@ export default async function handler(req, res) {
       reservations.delete(link);
       return res.json({ success: true });
     }
+
+    return res.status(400).json({ error: 'Invalid action' });
   }
 
   res.status(405).json({ error: 'Method not allowed' });
