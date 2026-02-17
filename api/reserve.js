@@ -11,44 +11,26 @@ const LINKS_KEY = 'donation_links_pool';
 
 async function getLinksPool() {
   const raw = await redis.get(LINKS_KEY);
+  console.log('Raw value from Redis:', raw, typeof raw);
 
-  if (!raw) {
-    console.log('No pool found in Redis - initializing fresh');
-    const initial = {
-      "100": ["https://tinyurl.com/ye7dfa8x"],
-      "200": ["https://tinyurl.com/2sxktakk"],
-      "300": ["https://tinyurl.com/4xjmjnex"],
-      "400": ["https://tinyurl.com/3mrhab8w"],
-      "500": ["https://tinyurl.com/ym6akt52"],
-      "600": ["https://tinyurl.com/568t4cz8"],
-      "700": ["https://tinyurl.com/3aave7py"],
-      "800": ["https://tinyurl.com/ybu9ymsd"],
-    };
-    await redis.set(LINKS_KEY, JSON.stringify(initial));
-    return initial;
-  }
+  // Force reset for this deploy only (remove after one successful test)
+  const initial = {
+    "100": ["https://tinyurl.com/ye7dfa8x"],
+    "200": ["https://tinyurl.com/2sxktakk"],
+    "300": ["https://tinyurl.com/4xjmjnex"],
+    "400": ["https://tinyurl.com/3mrhab8w"],
+    "500": ["https://tinyurl.com/ym6akt52"],
+    "600": ["https://tinyurl.com/568t4cz8"],
+    "700": ["https://tinyurl.com/3aave7py"],
+    "800": ["https://tinyurl.com/ybu9ymsd"],
+  };
+  await redis.set(LINKS_KEY, JSON.stringify(initial));
+  console.log('Forced fresh pool save');
+  return initial;
 
-  try {
-    const parsed = JSON.parse(raw);
-    console.log('Successfully loaded pool from Redis, counts:', 
-      Object.fromEntries(Object.entries(parsed).map(([k, v]) => [k, v.length]))
-    );
-    return parsed;
-  } catch (e) {
-    console.error('Corrupted Redis value for links pool - resetting', e, raw);
-    const initial = {
-      "100": ["https://tinyurl.com/ye7dfa8x"],
-      "200": ["https://tinyurl.com/2sxktakk"],
-      "300": ["https://tinyurl.com/4xjmjnex"],
-      "400": ["https://tinyurl.com/3mrhab8w"],
-      "500": ["https://tinyurl.com/ym6akt52"],
-      "600": ["https://tinyurl.com/568t4cz8"],
-      "700": ["https://tinyurl.com/3aave7py"],
-      "800": ["https://tinyurl.com/ybu9ymsd"],
-    };
-    await redis.set(LINKS_KEY, JSON.stringify(initial));
-    return initial;
-  }
+  // After one good test, remove the force block above and keep only this:
+  // if (!raw) { ... initialize ... }
+  // try { return JSON.parse(raw); } catch (e) { ... reset ... }
 }
 
 async function saveLinksPool(pool) {
