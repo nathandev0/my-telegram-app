@@ -23,25 +23,22 @@
     .container {
       width: 100%;
       max-width: 420px;
-      padding: 24px 16px;
+      padding: 24px 16px;           /* ← back to normal top padding */
       margin: 0 auto;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      text-align: center;
     }
 
     h1 {
       font-size: 28px;
       font-weight: 600;
       margin: 0 0 4px;
+      text-align: center;
     }
 
     .subtitle {
       font-size: 15px;
       color: var(--tg-theme-hint-color, #999999);
       margin: 0 0 28px;
+      text-align: center;
     }
 
     .donation-grid {
@@ -62,6 +59,7 @@
       cursor: pointer;
       transition: all 0.18s ease;
       position: relative;
+      overflow: hidden;
     }
 
     .donation-btn:disabled, .donation-btn.flow-active, .donation-btn.cooldown {
@@ -80,6 +78,7 @@
       padding: 2px 6px;
       border-radius: 10px;
       line-height: 1;
+      pointer-events: none;
     }
 
     #status {
@@ -96,8 +95,9 @@
       margin: 12px auto 0;
       background: var(--tg-theme-secondary-bg-color, #f8f9fa);
       border-radius: 16px;
-      padding: 24px 16px;
+      padding: 20px 16px;
       box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      overflow: hidden;
       display: none;
       text-align: center;
     }
@@ -107,7 +107,7 @@
     }
 
     .confirm-card h3, .success-page h2, .released-page h2 {
-      font-size: 18px;
+      font-size: 17px;
       font-weight: 600;
       margin: 0 0 16px;
     }
@@ -138,6 +138,7 @@
       align-items: center;
       justify-content: center;
       gap: 8px;
+      box-shadow: 0 2px 8px rgba(36, 129, 204, 0.3);
     }
 
     .no-btn {
@@ -180,7 +181,6 @@
 
     <div id="status"></div>
 
-    <!-- Confirmation -->
     <div class="confirm-card" id="confirmCard">
       <h3>Did you complete the payment?</h3>
       <button class="yes-btn" id="paidBtn">
@@ -191,7 +191,6 @@
       </button>
     </div>
 
-    <!-- Success page after Yes -->
     <div class="success-page" id="successPage">
       <div class="checkmark">🎉</div>
       <h2>Thank you!</h2>
@@ -201,7 +200,6 @@
       </p>
     </div>
 
-    <!-- Released page after No -->
     <div class="released-page" id="releasedPage">
       <div class="icon">🔄</div>
       <h2>Link released</h2>
@@ -234,8 +232,8 @@
     const cooldownTimers = new Map();
 
     const RESERVATION_TIMEOUT = 90_000;
-    const POST_PAID_COOLDOWN = 300_000;   // 5 min after Yes
-    const POST_CANCEL_COOLDOWN = 30_000;  // 30 sec after No
+    const POST_PAID_COOLDOWN = 300_000;
+    const POST_CANCEL_COOLDOWN = 30_000;
 
     async function fetchAvailability() {
       try {
@@ -316,19 +314,12 @@
 
       if (success) {
         successPage.classList.add('show');
-        // Auto-close Mini App after 4 seconds
-        setTimeout(() => {
-          tg.close();
-        }, 4000);
+        setTimeout(() => tg.close(), 4000);
       } else {
         releasedPage.classList.add('show');
-        // Auto-close after 3 seconds
-        setTimeout(() => {
-          tg.close();
-        }, 3000);
+        setTimeout(() => tg.close(), 3000);
       }
 
-      // Clear current flow
       setTimeout(() => {
         currentLink = null;
         currentAmount = null;
@@ -345,7 +336,6 @@
         body: JSON.stringify({ link: currentLink, action: 'paid' })
       });
 
-      // Start cooldown for this amount
       if (currentAmount) {
         cooldownTimers.set(currentAmount, setTimeout(() => {
           cooldownTimers.delete(currentAmount);
@@ -353,7 +343,7 @@
         }, POST_PAID_COOLDOWN));
       }
 
-      finishFlow(true); // success = true → thank you page + close
+      finishFlow(true);
     };
 
     cancelBtn.onclick = async () => {
@@ -371,7 +361,7 @@
         }, POST_CANCEL_COOLDOWN));
       }
 
-      finishFlow(false); // success = false → released page + close
+      finishFlow(false);
     };
 
     renderButtons();
