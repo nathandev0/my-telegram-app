@@ -6,48 +6,20 @@
   <title>Support Me</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
-    :root {
-      --tg-bg: var(--tg-theme-bg-color, #ffffff);
-      --tg-text: var(--tg-theme-text-color, #000000);
-      --tg-hint: var(--tg-theme-hint-color, #999999);
-      --tg-accent: var(--tg-theme-button-color, #0088cc);
-      --tg-accent-text: var(--tg-theme-button-text-color, #ffffff);
-      --tg-secondary-bg: var(--tg-theme-secondary-bg-color, #f0f0f0);
-    }
-
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       margin: 0;
       padding: 0;
-      background: var(--tg-bg);
-      color: var(--tg-text);
+      background: var(--tg-theme-bg-color, #ffffff);
+      color: var(--tg-theme-text-color, #000000);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
     }
-
-    .container {
-      width: 100%;
-      max-width: 420px;
-      padding: 24px 16px;
-      box-sizing: border-box;
-    }
-
-    h1 {
-      font-size: 28px;
-      font-weight: 600;
-      margin: 0 0 4px;
-      text-align: center;
-      line-height: 1.2;
-    }
-
-    .subtitle {
-      font-size: 15px;
-      color: var(--tg-hint);
-      margin: 0 0 28px;
-      text-align: center;
-    }
+    .container { width: 100%; max-width: 420px; padding: 24px 16px; box-sizing: border-box; }
+    h1 { font-size: 28px; font-weight: 600; margin: 0 0 4px; text-align: center; }
+    .subtitle { font-size: 15px; color: var(--tg-theme-hint-color, #999); margin: 0 0 28px; text-align: center; }
 
     .donation-grid {
       display: grid;
@@ -55,54 +27,31 @@
       gap: 12px;
       margin-bottom: 24px;
     }
-
     .donation-btn {
       height: 54px;
       font-size: 17px;
       font-weight: 600;
-      color: var(--tg-accent);
-      background: var(--tg-secondary-bg);
+      color: var(--tg-theme-button-color, #0088cc);
+      background: var(--tg-theme-secondary-bg-color, #f0f0f0);
       border: none;
       border-radius: 12px;
       cursor: pointer;
-      transition: all 0.18s ease;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     }
-
-    .donation-btn:hover:not(:disabled) {
-      background: rgba(0, 136, 204, 0.08);
-      transform: translateY(-1px);
-    }
-
-    .donation-btn:active:not(:disabled) {
-      transform: translateY(0);
-      opacity: 0.92;
-    }
-
     .donation-btn:disabled {
-      color: var(--tg-hint);
+      color: var(--tg-theme-hint-color, #999);
       opacity: 0.55;
       cursor: not-allowed;
     }
 
-    #status {
-      font-size: 15px;
-      color: var(--tg-hint);
-      text-align: center;
-      min-height: 20px;
-      margin-top: 8px;
-      opacity: 0;
-      transition: opacity 0.3s;
+    .confirm-box {
+      margin-top: 20px;
+      padding: 16px;
+      background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+      border-radius: 12px;
+      width: 100%;
+      display: none;
     }
-
-    #status.show {
-      opacity: 1;
-    }
-
-    @media (max-width: 380px) {
-      .donation-grid { grid-template-columns: 1fr; gap: 10px; }
-      .donation-btn { height: 52px; font-size: 16px; }
-    }
+    .confirm-box.show { display: block; }
   </style>
 </head>
 <body>
@@ -111,18 +60,16 @@
     <h1>Support Me</h1>
     <div class="subtitle">Choose donation amount</div>
 
-    <div class="donation-grid">
-      <button class="donation-btn" data-amount="100">$100</button>
-      <button class="donation-btn" data-amount="200">$200</button>
-      <button class="donation-btn" data-amount="300">$300</button>
-      <button class="donation-btn" data-amount="400">$400</button>
-      <button class="donation-btn" data-amount="500">$500</button>
-      <button class="donation-btn" data-amount="600">$600</button>
-      <button class="donation-btn" data-amount="700">$700</button>
-      <button class="donation-btn" data-amount="800">$800</button>
-    </div>
+    <div class="donation-grid" id="buttons"></div>
 
-    <div id="status"></div>
+    <div id="status" style="font-size:15px; color:var(--tg-theme-hint-color,#999); text-align:center; min-height:24px;"></div>
+
+    <!-- Confirmation after opening payment -->
+    <div class="confirm-box" id="confirmBox">
+      <p style="margin:0 0 12px; font-weight:600;">Did you complete the payment?</p>
+      <button id="paidBtn" style="width:100%; padding:14px; margin-bottom:8px; background:#0088cc; color:white; border:none; border-radius:10px; font-weight:600;">✅ Yes, I paid</button>
+      <button id="cancelBtn" style="width:100%; padding:14px; background:#f0f0f0; border:none; border-radius:10px; font-weight:600;">❌ No, release link</button>
+    </div>
   </div>
 
   <script>
@@ -130,91 +77,82 @@
     tg.ready();
     tg.expand();
 
-    // Apply theme
-    document.documentElement.style.setProperty('--tg-bg', tg.themeParams.bg_color);
-    document.documentElement.style.setProperty('--tg-text', tg.themeParams.text_color);
-    document.documentElement.style.setProperty('--tg-hint', tg.themeParams.hint_color);
-    document.documentElement.style.setProperty('--tg-accent', tg.themeParams.button_color);
-    document.documentElement.style.setProperty('--tg-accent-text', tg.themeParams.button_text_color);
-    document.documentElement.style.setProperty('--tg-secondary-bg', tg.themeParams.secondary_bg_color || '#f0f0f0');
-
-    const linksPool = {
-      "100": ["https://tinyurl.com/ye7dfa8x, https://facebook.com"],
-      "200": ["https://tinyurl.com/2sxktakk"],
-      "300": ["https://tinyurl.com/4xjmjnex"],
-      "400": ["https://tinyurl.com/3mrhab8w"],
-      "500": ["https://tinyurl.com/ym6akt52"],
-      "600": ["https://tinyurl.com/568t4cz8"],
-      "700": ["https://tinyurl.com/3aave7py"],
-      "800": ["https://tinyurl.com/ybu9ymsd"],
-    };
-
-    const STORAGE_KEY = 'used_donation_links';
-    let usedLinks = new Set();
-
     const statusEl = document.getElementById('status');
+    const confirmBox = document.getElementById('confirmBox');
+    const paidBtn = document.getElementById('paidBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
 
-    // Load used links from Telegram Cloud Storage on start
-    tg.CloudStorage.getItem(STORAGE_KEY, (err, value) => {
-      if (!err && value) {
-        try {
-          const saved = JSON.parse(value);
-          usedLinks = new Set(saved);
-          updateAllButtons();
-        } catch (e) {
-          console.warn('Invalid used links data', e);
-        }
-      }
-      // Enable buttons after load
-      updateAllButtons();
-    });
+    let currentLink = null;
 
-    function saveUsedLinks() {
-      const toSave = JSON.stringify(Array.from(usedLinks));
-      tg.CloudStorage.setItem(STORAGE_KEY, toSave, (err) => {
-        if (err) console.warn('CloudStorage save failed', err);
-      });
-    }
-
-    function updateAllButtons() {
-      document.querySelectorAll('.donation-btn').forEach(btn => {
-        const amount = btn.dataset.amount;
-        const available = (linksPool[amount] || []).filter(url => !usedLinks.has(url));
-        btn.disabled = available.length === 0;
+    // Render buttons
+    function renderButtons() {
+      const grid = document.getElementById('buttons');
+      grid.innerHTML = '';
+      [100,200,300,400,500,600,700,800].forEach(amount => {
+        const btn = document.createElement('button');
+        btn.className = 'donation-btn';
         btn.textContent = `$${amount}`;
+        btn.dataset.amount = amount;
+        btn.addEventListener('click', () => reserveAndOpen(amount));
+        grid.appendChild(btn);
       });
     }
 
-    document.querySelectorAll('.donation-btn').forEach(btn => {
-      const amount = btn.dataset.amount;
+    async function reserveAndOpen(amount) {
+      statusEl.textContent = 'Reserving link...';
+      
+      try {
+        const res = await fetch(`/api/reserve?amount=${amount}`);
+        const data = await res.json();
 
-      btn.addEventListener('click', () => {
-        const available = (linksPool[amount] || []).filter(url => !usedLinks.has(url));
-        if (available.length === 0) {
-          tg.showAlert(`No more links available for $${amount}`);
+        if (!res.ok) {
+          tg.showAlert(data.error || 'No links available right now');
+          statusEl.textContent = '';
           return;
         }
 
-        const widgetUrl = available[0];
-        usedLinks.add(widgetUrl);
-        saveUsedLinks(); // persist immediately
+        currentLink = data.widgetUrl;
 
-        statusEl.textContent = `Opening $${amount} payment…`;
-        statusEl.classList.add('show');
+        statusEl.textContent = `Opening $${amount} payment...`;
+        tg.openLink(currentLink);
 
-        window.location.href = widgetUrl;
+        // Show confirmation buttons
+        confirmBox.classList.add('show');
 
-        setTimeout(() => {
-          if (document.body.innerHTML.includes('Support Me')) {
-            tg.showAlert('Could not redirect. Try again.');
-            statusEl.classList.remove('show');
-          }
-        }, 1800);
+      } catch (e) {
+        tg.showAlert('Network error. Try again.');
+        statusEl.textContent = '';
+      }
+    }
 
-        updateAllButtons();
+    // Confirmation handlers
+    paidBtn.onclick = async () => {
+      if (!currentLink) return;
+      await fetch('/api/reserve', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ link: currentLink, action: 'paid' })
       });
-    });
+      tg.showAlert('Thank you! Wallet marked as used.');
+      confirmBox.classList.remove('show');
+      statusEl.textContent = 'Payment confirmed ✓';
+      currentLink = null;
+    };
 
+    cancelBtn.onclick = async () => {
+      if (!currentLink) return;
+      await fetch('/api/reserve', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ link: currentLink, action: 'cancel' })
+      });
+      tg.showAlert('Link released back to pool.');
+      confirmBox.classList.remove('show');
+      statusEl.textContent = '';
+      currentLink = null;
+    };
+
+    renderButtons();
     tg.MainButton.hide();
   </script>
 </body>
