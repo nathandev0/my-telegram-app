@@ -223,178 +223,178 @@
     Developed by <a href="https://t.me/nathandev0">@nathandev0</a>
   </footer>
 
-  <script>
-    const tg = window.Telegram.WebApp;
-    tg.ready();
-    tg.expand();
+<script>
+  const tg = window.Telegram.WebApp;
+  tg.ready();
+  tg.expand();
 
-    const statusEl = document.getElementById('status');
-    const confirmCard = document.getElementById('confirmCard');
-    const successPage = document.getElementById('successPage');
-    const releasedPage = document.getElementById('releasedPage');
-    const paidBtn = document.getElementById('paidBtn');
-    const cancelBtn = document.getElementById('cancelBtn');
-    const successTimerEl = document.getElementById('successTimer');
-    const releaseTimerEl = document.getElementById('releaseTimer');
+  const statusEl = document.getElementById('status');
+  const confirmCard = document.getElementById('confirmCard');
+  const successPage = document.getElementById('successPage');
+  const releasedPage = document.getElementById('releasedPage');
+  const paidBtn = document.getElementById('paidBtn');
+  const cancelBtn = document.getElementById('cancelBtn');
+  const successTimerEl = document.getElementById('successTimer');
+  const releaseTimerEl = document.getElementById('releaseTimer');
 
-    let currentLink = null;
-    let currentAmount = null;
-    let isFlowActive = false;
-    const cooldownTimers = new Map();
+  let currentLink = null;
+  let currentAmount = null;
+  let isFlowActive = false;
+  const cooldownTimers = new Map();
 
-    const RESERVATION_TIMEOUT = 90_000;
-    const POST_PAID_COOLDOWN = 300_000;
-    const POST_CANCEL_COOLDOWN = 30_000;
+  const RESERVATION_TIMEOUT = 90_000;
+  const POST_PAID_COOLDOWN = 300_000;
+  const POST_CANCEL_COOLDOWN = 30_000;
 
-    async function fetchAvailability() {
-      try {
-        const res = await fetch('/api/reserve?all=true');
-        if (!res.ok) return {};
-        const data = await res.json();
-        return data.availability || {};
-      } catch (e) {
-        return {};
+  async function fetchAvailability() {
+    try {
+      const res = await fetch('/api/reserve?all=true&_=' + Date.now());
+      if (!res.ok) return {};
+      const data = await res.json();
+      return data.availability || {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  async function renderButtons() {
+    const availability = await fetchAvailability();
+    const grid = document.getElementById('buttons');
+    grid.innerHTML = '';
+
+    [100,200,300,400,500,600,700,800].forEach(amount => {
+      const btn = document.createElement('button');
+      btn.className = 'donation-btn';
+      const availCount = availability[amount] || 0;
+      const isCooldown = cooldownTimers.has(amount);
+
+      btn.disabled = availCount === 0 || isFlowActive || isCooldown;
+      if (isFlowActive || isCooldown) btn.classList.add('flow-active');
+
+      let counterHTML = '';
+      if (availCount > 0 && availCount < 4) {
+        counterHTML = `<span class="counter">${availCount}</span>`;
       }
-    }
 
-    async function renderButtons() {
-      const availability = await fetchAvailability();
-      const grid = document.getElementById('buttons');
-      grid.innerHTML = '';
+      btn.innerHTML = `$${amount}${counterHTML}`;
 
-      [100,200,300,400,500,600,700,800].forEach(amount => {
-        const btn = document.createElement('button');
-        btn.className = 'donation-btn';
-        const availCount = availability[amount] || 0;
-        const isCooldown = cooldownTimers.has(amount);
-
-        btn.disabled = availCount === 0 || isFlowActive || isCooldown;
-        if (isFlowActive || isCooldown) btn.classList.add('flow-active');
-
-        let counterHTML = '';
-        if (availCount > 0 && availCount < 4) {
-          counterHTML = `<span class="counter">${availCount}</span>`;
-        }
-
-        btn.innerHTML = `$${amount}${counterHTML}`;
-
-        btn.addEventListener('click', () => {
-          if (btn.disabled) return;
-          reserveAndOpen(amount, btn);
-        });
-
-        grid.appendChild(btn);
+      btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        reserveAndOpen(amount, btn);
       });
-    }
 
-    async function reserveAndOpen(amount, buttonEl) {
-      isFlowActive = true;
-      renderButtons();
+      grid.appendChild(btn);
+    });
+  }
 
-      statusEl.textContent = 'Reserving link...';
+  async function reserveAndOpen(amount, buttonEl) {
+    isFlowActive = true;
+    renderButtons();
 
-      try {
-        const res = await fetch(`/api/reserve?amount=${amount}`);
-        const data = await res.json();
+    statusEl.textContent = 'Reserving link...';
 
-        if (!res.ok) {
-          tg.showAlert(data.error || 'No available links right now');
-          statusEl.textContent = '';
-          isFlowActive = false;
-          renderButtons();
-          return;
-        }
+    try {
+      const res = await fetch(`/api/reserve?amount=${amount}`);
+      const data = await res.json();
 
-        currentLink = data.widgetUrl;
-        currentAmount = amount;
-
-        statusEl.textContent = `Opening $${amount} payment...`;
-        tg.openLink(currentLink);
-
-        confirmCard.classList.add('show');
-
-      } catch (e) {
-        tg.showAlert('Network error. Try again.');
+      if (!res.ok) {
+        tg.showAlert(data.error || 'No available links right now');
         statusEl.textContent = '';
         isFlowActive = false;
         renderButtons();
+        return;
       }
-    }
 
-    function startCountdown(el, seconds, onComplete) {
-      let remaining = seconds;
+      currentLink = data.widgetUrl;
+      currentAmount = amount;
+
+      statusEl.textContent = `Opening $${amount} payment...`;
+      tg.openLink(currentLink);
+
+      confirmCard.classList.add('show');
+
+    } catch (e) {
+      tg.showAlert('Network error. Try again.');
+      statusEl.textContent = '';
+      isFlowActive = false;
+      renderButtons();
+    }
+  }
+
+  function startCountdown(el, seconds, onComplete) {
+    let remaining = seconds;
+    el.textContent = remaining;
+
+    const interval = setInterval(() => {
+      remaining--;
       el.textContent = remaining;
 
-      const interval = setInterval(() => {
-        remaining--;
-        el.textContent = remaining;
+      if (remaining <= 0) {
+        clearInterval(interval);
+        onComplete();
+      }
+    }, 1000);
+  }
 
-        if (remaining <= 0) {
-          clearInterval(interval);
-          onComplete();
-        }
-      }, 1000);
+  function finishFlow(success = false) {
+    confirmCard.classList.remove('show');
+
+    if (success) {
+      successPage.classList.add('show');
+      startCountdown(successTimerEl, 5, () => tg.close());
+    } else {
+      releasedPage.classList.add('show');
+      startCountdown(releaseTimerEl, 4, () => tg.close());
     }
 
-    function finishFlow(success = false) {
-      confirmCard.classList.remove('show');
+    setTimeout(() => {
+      currentLink = null;
+      currentAmount = null;
+      isFlowActive = false;
+      renderButtons();
+    }, 1000);
+  }
 
-      if (success) {
-        successPage.classList.add('show');
-        startCountdown(successTimerEl, 5, () => tg.close());
-      } else {
-        releasedPage.classList.add('show');
-        startCountdown(releaseTimerEl, 4, () => tg.close());
-      }
+  paidBtn.onclick = async () => {
+    if (!currentLink) return;
+    await fetch('/api/reserve', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ link: currentLink, action: 'paid' })
+    });
 
-      setTimeout(() => {
-        currentLink = null;
-        currentAmount = null;
-        isFlowActive = false;
+    if (currentAmount) {
+      cooldownTimers.set(currentAmount, setTimeout(() => {
+        cooldownTimers.delete(currentAmount);
         renderButtons();
-      }, 1000);
+      }, POST_PAID_COOLDOWN));
     }
 
-    paidBtn.onclick = async () => {
-      if (!currentLink) return;
-      await fetch('/api/reserve', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ link: currentLink, action: 'paid' })
-      });
+    finishFlow(true);
+  };
 
-      if (currentAmount) {
-        cooldownTimers.set(currentAmount, setTimeout(() => {
-          cooldownTimers.delete(currentAmount);
-          renderButtons();
-        }, POST_PAID_COOLDOWN));
-      }
+  cancelBtn.onclick = async () => {
+    if (!currentLink) return;
+    await fetch('/api/reserve', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ link: currentLink, action: 'cancel' })
+    });
 
-      finishFlow(true);
-    };
+    if (currentAmount) {
+      cooldownTimers.set(currentAmount, setTimeout(() => {
+        cooldownTimers.delete(currentAmount);
+        renderButtons();
+      }, POST_CANCEL_COOLDOWN));
+    }
 
-    cancelBtn.onclick = async () => {
-      if (!currentLink) return;
-      await fetch('/api/reserve', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ link: currentLink, action: 'cancel' })
-      });
+    finishFlow(false);
+  };
 
-      if (currentAmount) {
-        cooldownTimers.set(currentAmount, setTimeout(() => {
-          cooldownTimers.delete(currentAmount);
-          renderButtons();
-        }, POST_CANCEL_COOLDOWN));
-      }
+  renderButtons();
+  setInterval(renderButtons, 15000);
 
-      finishFlow(false);
-    };
-
-    renderButtons();
-    setInterval(renderButtons, 15000);
-
-    tg.MainButton.hide();
+  tg.MainButton.hide();
   </script>
 </body>
 </html>
