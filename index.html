@@ -81,73 +81,48 @@
     };
 
     // Simple in-memory used tracking (resets on reload — later use backend/storage)
-    const usedLinks = new Set(); // in-memory for now
+const usedLinks = new Set(); // in-memory tracking (resets on reload)
 
-    const buttons = document.querySelectorAll('button[data-amount]');
-    const status = document.getElementById('status');
-    const webviewContainer = document.getElementById('webview-container');
+const status = document.getElementById('status');
 
-    // Create container for iframe if not present
-    if (!webviewContainer) {
-        const container = document.createElement('div');
-        container.id = 'webview-container';
-        container.style.display = 'none';
-        container.style.position = 'fixed';
-        container.style.inset = '0';
-        container.style.background = 'white';
-        container.style.zIndex = '9999';
-        container.innerHTML = `
-        <div style="height:50px;background:#222;color:white;padding:12px;display:flex;justify-content:space-between;align-items:center;">
-            <button id="close-webview" style="background:none;border:none;color:white;font-size:18px;">← Back</button>
-            <span>Payment</span>
-            <div style="width:40px;"></div>
-        </div>
-        <iframe id="payment-iframe" style="width:100%;height:calc(100% - 50px);border:none;"></iframe>
-        `;
-        document.body.appendChild(container);
+document.querySelectorAll('button[data-amount]').forEach(btn => {
+  const amount = btn.dataset.amount;
+
+  function updateButton() {
+    const available = (linksPool[amount] || []).filter(url => !usedLinks.has(url));
+    btn.disabled = available.length === 0;
+    btn.textContent = available.length === 0 ? `$${amount} (out)` : `$${amount}`;
+  }
+
+  updateButton();
+
+  btn.addEventListener('click', () => {
+    const available = (linksPool[amount] || []).filter(url => !usedLinks.has(url));
+    if (available.length === 0) {
+      tg.showAlert(`No available links for $${amount}`);
+      return;
     }
 
-    // Close button handler
-    document.getElementById('close-webview')?.addEventListener('click', () => {
-        document.getElementById('webview-container').style.display = 'none';
-        document.getElementById('payment-iframe').src = 'about:blank';
-        status.textContent = 'Payment window closed';
-    });
+    const widgetUrl = available[0];
+    usedLinks.add(widgetUrl);
 
-    buttons.forEach(btn => {
-        const amount = btn.dataset.amount;
+    status.textContent = `Redirecting to $${amount} payment...`;
 
-        function updateButtonState() {
-        const available = (linksPool[amount] || []).filter(url => !usedLinks.has(url));
-        btn.disabled = available.length === 0;
-        btn.textContent = available.length === 0 ? `$${amount} (out)` : `$${amount}`;
-        }
+    // The only method you want — full redirect
+    window.location.href = widgetUrl;
 
-        updateButtonState();
+    // Optional: fallback alert if redirect is blocked (rare)
+    setTimeout(() => {
+      if (document.body.innerHTML.includes('Donation')) {  // still on original page
+        tg.showAlert('Redirect failed. Please try again or open in browser.');
+      }
+    }, 1500);
 
-        btn.addEventListener('click', () => {
-        const available = (linksPool[amount] || []).filter(url => !usedLinks.has(url));
-        if (available.length === 0) {
-            tg.showAlert(`No available links for $${amount}`);
-            return;
-        }
+    updateButton();
+  });
+});
 
-        const selectedLink = available[0];
-        usedLinks.add(selectedLink);
-
-        // Open in iframe (webview)
-        const iframe = document.getElementById('payment-iframe');
-        iframe.src = selectedLink;
-
-        document.getElementById('webview-container').style.display = 'block';
-
-        status.textContent = `Opening $${amount} payment...`;
-
-        updateButtonState();
-        });
-    });
-
-    tg.MainButton.hide();
+tg.MainButton.hide();
     </script>
     <div id="webview-container"></div>
 </body>
