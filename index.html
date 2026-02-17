@@ -7,148 +7,142 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
-      --primary: #0066ff;
-      --primary-dark: #0055d4;
-      --text: #1a1a1a;
-      --gray: #6b7280;
-      --light-gray: #f3f4f6;
+      --tg-bg: var(--tg-theme-bg-color, #ffffff);
+      --tg-text: var(--tg-theme-text-color, #000000);
+      --tg-hint: var(--tg-theme-hint-color, #999999);
+      --tg-accent: var(--tg-theme-button-color, #0088cc);
+      --tg-accent-text: var(--tg-theme-button-text-color, #ffffff);
+      --tg-secondary-bg: var(--tg-theme-secondary-bg-color, #f0f0f0);
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       margin: 0;
-      padding: 24px 16px;
-      background: white;
-      color: var(--text);
+      padding: 0;
+      background: var(--tg-bg);
+      color: var(--tg-text);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      text-align: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 420px;
+      padding: 24px 16px;
+      box-sizing: border-box;
     }
 
     h1 {
-      font-size: 2.6rem;
-      font-weight: 800;
-      margin: 0 0 8px;
-      letter-spacing: -0.5px;
-      color: var(--text);
+      font-size: 28px;
+      font-weight: 600;
+      margin: 0 0 4px;
+      text-align: center;
+      line-height: 1.2;
     }
 
     .subtitle {
-      font-size: 1.1rem;
-      color: var(--gray);
-      margin: 0 0 32px;
-      max-width: 360px;
+      font-size: 15px;
+      color: var(--tg-hint);
+      margin: 0 0 28px;
+      text-align: center;
     }
 
-    .buttons {
+    .donation-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 14px;
-      width: 100%;
-      max-width: 420px;
-      margin-bottom: 32px;
+      gap: 12px;
+      margin-bottom: 24px;
     }
 
-    button {
-      position: relative;
-      padding: 16px 12px;
-      font-size: 1.35rem;
-      font-weight: 700;
-      color: var(--primary);
-      background: white;
-      border: 2px solid transparent;
-      border-radius: 16px;
+    .donation-btn {
+      height: 54px;
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--tg-accent);
+      background: var(--tg-secondary-bg);
+      border: none;
+      border-radius: 12px;
       cursor: pointer;
-      transition: all 0.25s ease;
-      box-shadow: 0 4px 12px rgba(0, 102, 255, 0.08);
-      overflow: hidden;
+      transition: all 0.18s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     }
 
-    button::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      border-radius: 16px;
-      padding: 2px;
-      background: linear-gradient(135deg, #0066ff, #00d4ff);
-      -webkit-mask: 
-        linear-gradient(#fff 0 0) content-box, 
-        linear-gradient(#fff 0 0);
-      -webkit-mask-composite: xor;
-      mask-composite: exclude;
-      pointer-events: none;
-      transition: opacity 0.3s;
+    .donation-btn:hover:not(:disabled) {
+      background: rgba(0, 136, 204, 0.08);
+      transform: translateY(-1px);
     }
 
-    button:hover:not(:disabled) {
-      transform: translateY(-3px);
-      box-shadow: 0 10px 20px rgba(0, 102, 255, 0.15);
-    }
-
-    button:active:not(:disabled) {
+    .donation-btn:active:not(:disabled) {
       transform: translateY(0);
-      box-shadow: 0 4px 12px rgba(0, 102, 255, 0.12);
+      opacity: 0.92;
     }
 
-    button:disabled {
-      color: #9ca3af;
-      background: #f9fafb;
-      box-shadow: none;
+    .donation-btn:disabled {
+      color: var(--tg-hint);
+      opacity: 0.55;
       cursor: not-allowed;
-      transform: none;
-      opacity: 0.7;
-    }
-
-    button:disabled::before {
-      opacity: 0;
     }
 
     #status {
-      font-size: 1.05rem;
-      color: var(--gray);
-      min-height: 1.6em;
-      margin-top: 16px;
+      font-size: 15px;
+      color: var(--tg-hint);
+      text-align: center;
+      min-height: 20px;
+      margin-top: 8px;
       opacity: 0;
-      transition: opacity 0.4s;
+      transition: opacity 0.3s;
     }
 
     #status.show {
       opacity: 1;
     }
 
-    @media (max-width: 400px) {
-      .buttons {
+    @media (max-width: 380px) {
+      .donation-grid {
         grid-template-columns: 1fr;
-        gap: 12px;
+        gap: 10px;
       }
-      h1 { font-size: 2.2rem; }
-      button { font-size: 1.25rem; padding: 14px 10px; }
+      .donation-btn {
+        height: 52px;
+        font-size: 16px;
+      }
     }
   </style>
 </head>
 <body>
-  <h1>Support Me</h1>
-  <div class="subtitle">Choose your donation amount</div>
 
-  <div class="buttons">
-    <button data-amount="100">$100</button>
-    <button data-amount="200">$200</button>
-    <button data-amount="300">$300</button>
-    <button data-amount="400">$400</button>
-    <button data-amount="500">$500</button>
-    <button data-amount="600">$600</button>
-    <button data-amount="700">$700</button>
-    <button data-amount="800">$800</button>
+  <div class="container">
+    <h1>Support Me</h1>
+    <div class="subtitle">Choose donation amount</div>
+
+    <div class="donation-grid">
+      <button class="donation-btn" data-amount="100">$100</button>
+      <button class="donation-btn" data-amount="200">$200</button>
+      <button class="donation-btn" data-amount="300">$300</button>
+      <button class="donation-btn" data-amount="400">$400</button>
+      <button class="donation-btn" data-amount="500">$500</button>
+      <button class="donation-btn" data-amount="600">$600</button>
+      <button class="donation-btn" data-amount="700">$700</button>
+      <button class="donation-btn" data-amount="800">$800</button>
+    </div>
+
+    <div id="status"></div>
   </div>
-
-  <div id="status"></div>
 
   <script>
     const tg = window.Telegram.WebApp;
     tg.ready();
     tg.expand();
+
+    // Apply Telegram theme colors dynamically
+    document.documentElement.style.setProperty('--tg-bg', tg.themeParams.bg_color);
+    document.documentElement.style.setProperty('--tg-text', tg.themeParams.text_color);
+    document.documentElement.style.setProperty('--tg-hint', tg.themeParams.hint_color);
+    document.documentElement.style.setProperty('--tg-accent', tg.themeParams.button_color);
+    document.documentElement.style.setProperty('--tg-accent-text', tg.themeParams.button_text_color);
+    document.documentElement.style.setProperty('--tg-secondary-bg', tg.themeParams.secondary_bg_color || '#f0f0f0');
 
     const linksPool = {
       "100": ["https://tinyurl.com/ye7dfa8x"],
@@ -164,13 +158,13 @@
     const usedLinks = new Set();
     const statusEl = document.getElementById('status');
 
-    document.querySelectorAll('button[data-amount]').forEach(btn => {
+    document.querySelectorAll('.donation-btn').forEach(btn => {
       const amount = btn.dataset.amount;
 
       function updateButton() {
         const available = (linksPool[amount] || []).filter(url => !usedLinks.has(url));
         btn.disabled = available.length === 0;
-        btn.textContent = `$${amount}`; // always show amount, even when disabled
+        btn.textContent = `$${amount}`;
       }
 
       updateButton();
@@ -178,21 +172,22 @@
       btn.addEventListener('click', () => {
         const available = (linksPool[amount] || []).filter(url => !usedLinks.has(url));
         if (available.length === 0) {
-          tg.showAlert(`No more available links for $${amount}`);
+          tg.showAlert(`No more links available for $${amount}`);
           return;
         }
 
         const widgetUrl = available[0];
         usedLinks.add(widgetUrl);
 
-        statusEl.textContent = `Redirecting to $${amount} payment...`;
+        statusEl.textContent = `Opening $${amount} payment…`;
         statusEl.classList.add('show');
 
         window.location.href = widgetUrl;
 
+        // Fallback in case redirect is blocked
         setTimeout(() => {
           if (document.body.innerHTML.includes('Support Me')) {
-            tg.showAlert('Could not redirect automatically. Tap the button again.');
+            tg.showAlert('Could not redirect. Try again.');
             statusEl.classList.remove('show');
           }
         }, 1800);
