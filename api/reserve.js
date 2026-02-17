@@ -1,7 +1,7 @@
 // api/reserve.js
 
 const linksPool = {
-  "100": ["https://tinyurl.com/ye7dfa8x"],
+  "100": ["https://tinyurl.com/ye7dfa8x", "https://facebook.com", "https://spotify.com"],
   "200": ["https://tinyurl.com/2sxktakk"],
   "300": ["https://tinyurl.com/4xjmjnex"],
   "400": ["https://tinyurl.com/3mrhab8w"],
