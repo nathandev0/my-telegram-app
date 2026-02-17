@@ -1,4 +1,4 @@
-// api/reserve.js
+// api/reserve.js - Using Upstash Redis for permanent storage
 
 import { Redis } from '@upstash/redis';
 
@@ -10,9 +10,10 @@ const redis = new Redis({
 const LINKS_KEY = 'donation_links_pool';
 
 async function getLinksPool() {
-  const raw = await redis.get(LINKS_KEY);
+  let raw = await redis.get(LINKS_KEY);
 
   if (!raw) {
+    // First time - initialize
     const initial = {
       "100": ["https://tinyurl.com/ye7dfa8x"],
       "200": ["https://tinyurl.com/2sxktakk"],
@@ -30,7 +31,7 @@ async function getLinksPool() {
   try {
     return JSON.parse(raw);
   } catch (e) {
-    console.error('Corrupted Redis value for links pool - resetting', e, raw);
+    console.error('Corrupted Redis data - resetting pool', e);
     const initial = {
       "100": ["https://tinyurl.com/ye7dfa8x"],
       "200": ["https://tinyurl.com/2sxktakk"],
@@ -50,12 +51,12 @@ async function saveLinksPool(pool) {
   await redis.set(LINKS_KEY, JSON.stringify(pool));
 }
 
-let reservations = new Map(); // temporary reservations (in-memory, short-lived)
+let reservations = new Map(); // temporary 90s reservations (in-memory is fine here)
 
 function cleanExpired() {
   const now = Date.now();
   for (const [link, data] of reservations.entries()) {
-    if (now - data.reservedAt > 90000) { // 90 seconds
+    if (now - data.reservedAt > 90000) {
       reservations.delete(link);
     }
   }
@@ -64,7 +65,7 @@ function cleanExpired() {
 export default async function handler(req, res) {
   cleanExpired();
 
-  // GET availability for all amounts
+  // GET availability for all
   if (req.method === 'GET' && req.query.all === 'true') {
     const pool = await getLinksPool();
     const availability = {};
@@ -75,7 +76,7 @@ export default async function handler(req, res) {
     return res.json({ availability });
   }
 
-  // GET - reserve one link
+  // GET - reserve one
   if (req.method === 'GET') {
     const { amount } = req.query;
     if (!amount) return res.status(400).json({ error: 'Missing amount' });
@@ -86,7 +87,7 @@ export default async function handler(req, res) {
     const available = pool[amount].filter(link => !reservations.has(link));
 
     if (available.length === 0) {
-      return res.status(503).json({ error: 'All links for this amount are currently reserved or used.' });
+      return res.status(503).json({ error: 'No available links for this amount' });
     }
 
     const link = available[0];
@@ -99,7 +100,7 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     const { link, action } = req.body;
 
-    if (!link || !action) return res.status(400).json({ error: 'Missing link or action' });
+    if (!link || !action) return res.status(400).json({ error: 'Missing parameters' });
 
     const pool = await getLinksPool();
 
@@ -112,9 +113,11 @@ export default async function handler(req, res) {
       }
       if (removed) {
         await saveLinksPool(pool);
+        reservations.delete(link);
+        return res.json({ success: true, message: 'Link permanently used' });
+      } else {
+        return res.status(404).json({ error: 'Link not found in pool' });
       }
-      reservations.delete(link);
-      return res.json({ success: true, message: 'Link permanently removed' });
     }
 
     if (action === 'cancel') {
