@@ -26,20 +26,22 @@
       padding: 24px 16px;
       margin: 0 auto;
       flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      text-align: center;
     }
 
     h1 {
       font-size: 28px;
       font-weight: 600;
       margin: 0 0 4px;
-      text-align: center;
     }
 
     .subtitle {
       font-size: 15px;
       color: var(--tg-theme-hint-color, #999999);
       margin: 0 0 28px;
-      text-align: center;
     }
 
     .donation-grid {
@@ -60,14 +62,11 @@
       cursor: pointer;
       transition: all 0.18s ease;
       position: relative;
-      overflow: hidden;
     }
 
-    .donation-btn:disabled,
-    .donation-btn.flow-active {
+    .donation-btn:disabled, .donation-btn.flow-active, .donation-btn.cooldown {
       opacity: 0.5;
       cursor: not-allowed;
-      transform: none;
     }
 
     .donation-btn .counter {
@@ -81,7 +80,6 @@
       padding: 2px 6px;
       border-radius: 10px;
       line-height: 1;
-      pointer-events: none;
     }
 
     #status {
@@ -92,26 +90,38 @@
       margin: 8px 0 16px;
     }
 
-    .confirm-card {
+    .confirm-card, .success-page, .released-page {
       width: 100%;
       max-width: 380px;
       margin: 12px auto 0;
       background: var(--tg-theme-secondary-bg-color, #f8f9fa);
       border-radius: 16px;
-      padding: 20px 16px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-      overflow: hidden;
+      padding: 24px 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
       display: none;
+      text-align: center;
     }
 
-    .confirm-card.show { display: block; }
+    .confirm-card.show, .success-page.show, .released-page.show {
+      display: block;
+    }
 
-    .confirm-card h3 {
-      font-size: 17px;
+    .confirm-card h3, .success-page h2, .released-page h2 {
+      font-size: 18px;
       font-weight: 600;
       margin: 0 0 16px;
-      text-align: center;
-      color: var(--tg-theme-text-color, #000);
+    }
+
+    .success-page .checkmark {
+      font-size: 64px;
+      margin-bottom: 16px;
+      color: #34c759;
+    }
+
+    .released-page .icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      color: #ff3b30;
     }
 
     .yes-btn {
@@ -128,7 +138,6 @@
       align-items: center;
       justify-content: center;
       gap: 8px;
-      box-shadow: 0 2px 8px rgba(36, 129, 204, 0.3);
     }
 
     .no-btn {
@@ -171,6 +180,7 @@
 
     <div id="status"></div>
 
+    <!-- Confirmation -->
     <div class="confirm-card" id="confirmCard">
       <h3>Did you complete the payment?</h3>
       <button class="yes-btn" id="paidBtn">
@@ -179,6 +189,26 @@
       <button class="no-btn" id="cancelBtn">
         ❌ No, release link
       </button>
+    </div>
+
+    <!-- Success page after Yes -->
+    <div class="success-page" id="successPage">
+      <div class="checkmark">🎉</div>
+      <h2>Thank you!</h2>
+      <p style="font-size:15px; color:var(--tg-theme-hint-color,#999); margin:8px 0 20px;">
+        Your support means a lot ❤️<br>
+        Returning to chat...
+      </p>
+    </div>
+
+    <!-- Released page after No -->
+    <div class="released-page" id="releasedPage">
+      <div class="icon">🔄</div>
+      <h2>Link released</h2>
+      <p style="font-size:15px; color:var(--tg-theme-hint-color,#999); margin:8px 0 20px;">
+        The payment link is back in the pool.<br>
+        You can try again or choose another amount.
+      </p>
     </div>
   </div>
 
@@ -193,11 +223,19 @@
 
     const statusEl = document.getElementById('status');
     const confirmCard = document.getElementById('confirmCard');
+    const successPage = document.getElementById('successPage');
+    const releasedPage = document.getElementById('releasedPage');
     const paidBtn = document.getElementById('paidBtn');
     const cancelBtn = document.getElementById('cancelBtn');
 
     let currentLink = null;
+    let currentAmount = null;
     let isFlowActive = false;
+    const cooldownTimers = new Map();
+
+    const RESERVATION_TIMEOUT = 90_000;
+    const POST_PAID_COOLDOWN = 300_000;   // 5 min after Yes
+    const POST_CANCEL_COOLDOWN = 30_000;  // 30 sec after No
 
     async function fetchAvailability() {
       try {
@@ -218,7 +256,10 @@
         const btn = document.createElement('button');
         btn.className = 'donation-btn';
         const availCount = availability[amount] || 0;
-        btn.disabled = availCount === 0 || isFlowActive;
+        const isCooldown = cooldownTimers.has(amount);
+
+        btn.disabled = availCount === 0 || isFlowActive || isCooldown;
+        if (isFlowActive || isCooldown) btn.classList.add('flow-active');
 
         let counterHTML = '';
         if (availCount > 0 && availCount < 4) {
@@ -228,7 +269,7 @@
         btn.innerHTML = `$${amount}${counterHTML}`;
 
         btn.addEventListener('click', () => {
-          if (isFlowActive || btn.disabled) return;
+          if (btn.disabled) return;
           reserveAndOpen(amount, btn);
         });
 
@@ -238,7 +279,7 @@
 
     async function reserveAndOpen(amount, buttonEl) {
       isFlowActive = true;
-      renderButtons(); // disable all buttons immediately
+      renderButtons();
 
       statusEl.textContent = 'Reserving link...';
 
@@ -255,6 +296,7 @@
         }
 
         currentLink = data.widgetUrl;
+        currentAmount = amount;
 
         statusEl.textContent = `Opening $${amount} payment...`;
         tg.openLink(currentLink);
@@ -269,6 +311,32 @@
       }
     }
 
+    async function finishFlow(success = false) {
+      confirmCard.classList.remove('show');
+
+      if (success) {
+        successPage.classList.add('show');
+        // Auto-close Mini App after 4 seconds
+        setTimeout(() => {
+          tg.close();
+        }, 4000);
+      } else {
+        releasedPage.classList.add('show');
+        // Auto-close after 3 seconds
+        setTimeout(() => {
+          tg.close();
+        }, 3000);
+      }
+
+      // Clear current flow
+      setTimeout(() => {
+        currentLink = null;
+        currentAmount = null;
+        isFlowActive = false;
+        renderButtons();
+      }, 1000);
+    }
+
     paidBtn.onclick = async () => {
       if (!currentLink) return;
       await fetch('/api/reserve', {
@@ -276,12 +344,16 @@
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ link: currentLink, action: 'paid' })
       });
-      tg.showAlert('Thank you! Payment confirmed ❤️');
-      confirmCard.classList.remove('show');
-      statusEl.textContent = '';
-      currentLink = null;
-      isFlowActive = false;
-      renderButtons();
+
+      // Start cooldown for this amount
+      if (currentAmount) {
+        cooldownTimers.set(currentAmount, setTimeout(() => {
+          cooldownTimers.delete(currentAmount);
+          renderButtons();
+        }, POST_PAID_COOLDOWN));
+      }
+
+      finishFlow(true); // success = true → thank you page + close
     };
 
     cancelBtn.onclick = async () => {
@@ -291,15 +363,17 @@
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ link: currentLink, action: 'cancel' })
       });
-      tg.showAlert('Link released back to pool');
-      confirmCard.classList.remove('show');
-      statusEl.textContent = '';
-      currentLink = null;
-      isFlowActive = false;
-      renderButtons();
+
+      if (currentAmount) {
+        cooldownTimers.set(currentAmount, setTimeout(() => {
+          cooldownTimers.delete(currentAmount);
+          renderButtons();
+        }, POST_CANCEL_COOLDOWN));
+      }
+
+      finishFlow(false); // success = false → released page + close
     };
 
-    // Initial render + periodic refresh
     renderButtons();
     setInterval(renderButtons, 15000);
 
