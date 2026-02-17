@@ -1,4 +1,4 @@
-// api/reserve.js - Reliable Vercel Blob storage
+// api/reserve.js - Vercel Blob with allowOverwrite fix
 
 import { put, get } from '@vercel/blob';
 
@@ -30,8 +30,9 @@ async function getLinksPool() {
     await put(BLOB_PATH, JSON.stringify(initial), {
       access: 'public',
       addRandomSuffix: false,
-      allowOverwrite: true,
+      allowOverwrite: true,  // Allows overwriting existing file
     });
+    console.log('Initial pool saved to Blob');
     return initial;
   }
 }
@@ -40,14 +41,14 @@ async function saveLinksPool(pool) {
   await put(BLOB_PATH, JSON.stringify(pool), {
     access: 'public',
     addRandomSuffix: false,
-    allowOverwrite: true,
+    allowOverwrite: true,  // Critical fix - allows update after paid
   });
   console.log('Saved updated pool to Blob, counts:', 
     Object.fromEntries(Object.entries(pool).map(([k,v]) => [k, v.length]))
   );
 }
 
-let reservations = new Map(); // temporary 90s
+let reservations = new Map(); // temporary 90s reservation
 
 function cleanExpired() {
   const now = Date.now();
@@ -102,6 +103,7 @@ export default async function handler(req, res) {
       }
       if (removed) {
         await saveLinksPool(pool);
+        console.log('Permanently removed paid link:', link);
       }
       reservations.delete(link);
       return res.json({ success: true });
