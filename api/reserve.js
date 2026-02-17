@@ -1,4 +1,4 @@
-// api/reserve.js - Vercel Blob (persistent file storage)
+// api/reserve.js - Pure Vercel Blob (no Redis, simple persistent file)
 
 import { put, get } from '@vercel/blob';
 
@@ -11,10 +11,12 @@ async function getLinksPool() {
 
     const res = await fetch(url);
     const pool = await res.json();
-    console.log('Loaded pool from Blob:', Object.keys(pool).map(k => `${k}: ${pool[k].length} links`));
+    console.log('Loaded pool from Blob, counts:', 
+      Object.fromEntries(Object.entries(pool).map(([k,v]) => [k, v.length]))
+    );
     return pool;
   } catch (e) {
-    console.log('Initializing fresh pool in Blob', e);
+    console.log('Blob not found or error - initializing fresh pool', e);
     const initial = {
       "100": ["https://tinyurl.com/ye7dfa8x"],
       "200": ["https://tinyurl.com/2sxktakk"],
@@ -30,6 +32,7 @@ async function getLinksPool() {
       addRandomSuffix: false,
       allowOverwrite: true,
     });
+    console.log('Initial pool saved to Blob');
     return initial;
   }
 }
@@ -43,7 +46,7 @@ async function saveLinksPool(pool) {
   console.log('Saved updated pool to Blob');
 }
 
-let reservations = new Map();
+let reservations = new Map(); // temporary 90s reservation
 
 function cleanExpired() {
   const now = Date.now();
@@ -67,6 +70,8 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     const { amount } = req.query;
+    if (!amount) return res.status(400).json({ error: 'Missing amount' });
+
     const pool = await getLinksPool();
     if (!pool[amount]) return res.status(400).json({ error: 'Invalid amount' });
 
