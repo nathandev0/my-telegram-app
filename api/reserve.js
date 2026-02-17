@@ -11,7 +11,7 @@ async function getLinksPool() {
   let pool = await redis.get(LINKS_KEY);
   if (!pool) {
     pool = {
-      "100": ["https://tinyurl.com/ye7dfa8x"],
+      "100": ["https://tinyurl.com/ye7dfa8x", "https://facebook.com"],
       "200": ["https://tinyurl.com/2sxktakk"],
       "300": ["https://tinyurl.com/4xjmjnex"],
       "400": ["https://tinyurl.com/3mrhab8w"],
