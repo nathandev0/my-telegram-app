@@ -1,4 +1,4 @@
-// api/reserve.js — Vercel Blob — permanent link removal
+// api/reserve.js - Vercel Blob - PERMANENT removal
 
 import { put, get } from '@vercel/blob';
 
@@ -10,15 +10,15 @@ async function getLinksPool() {
     if (!url) throw new Error('Blob not found');
 
     const res = await fetch(url + '?_=' + Date.now());
-    if (!res.ok) throw new Error('Fetch failed');
+    if (!res.ok) throw new Error('Fetch failed: ' + res.status);
 
     const pool = await res.json();
-    console.log('Loaded pool from Blob — counts:', 
+    console.log('Loaded pool from Blob - counts:', 
       Object.fromEntries(Object.entries(pool).map(([k,v]) => [k, v.length]))
     );
     return pool;
   } catch (e) {
-    console.log('Blob missing/error — initializing fresh pool', e);
+    console.log('Blob missing or error - creating initial pool', e.message);
     const initial = {
       "100": ["https://tinyurl.com/ye7dfa8x"],
       "200": ["https://tinyurl.com/2sxktakk"],
@@ -34,7 +34,7 @@ async function getLinksPool() {
       addRandomSuffix: false,
       allowOverwrite: true,
     });
-    console.log('Fresh initial pool saved to Blob');
+    console.log('Initial pool created and saved to Blob');
     return initial;
   }
 }
@@ -45,7 +45,7 @@ async function saveLinksPool(pool) {
     addRandomSuffix: false,
     allowOverwrite: true,
   });
-  console.log('Updated pool saved to Blob — counts:', 
+  console.log('Saved updated pool to Blob - counts:', 
     Object.fromEntries(Object.entries(pool).map(([k,v]) => [k, v.length]))
   );
 }
@@ -81,7 +81,7 @@ export default async function handler(req, res) {
 
     const available = pool[amount].filter(l => !reservations.has(l));
     if (available.length === 0) {
-      return res.status(503).json({ error: 'No available links' });
+      return res.status(503).json({ error: 'No available links for this amount' });
     }
 
     const link = available[0];
@@ -105,7 +105,9 @@ export default async function handler(req, res) {
       }
       if (removed) {
         await saveLinksPool(pool);
-        console.log('Permanently removed paid link:', link);
+        console.log('PERMANENTLY REMOVED paid link:', link);
+      } else {
+        console.log('Paid link not found in pool:', link);
       }
       reservations.delete(link);
       return res.json({ success: true });
@@ -113,6 +115,7 @@ export default async function handler(req, res) {
 
     if (action === 'cancel') {
       reservations.delete(link);
+      console.log('Released link back to pool:', link);
       return res.json({ success: true });
     }
   }
