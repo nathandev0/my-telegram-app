@@ -27,6 +27,7 @@
       gap: 12px;
       margin-bottom: 24px;
     }
+
     .donation-btn {
       height: 54px;
       font-size: 17px;
@@ -36,11 +37,32 @@
       border: none;
       border-radius: 12px;
       cursor: pointer;
+      transition: all 0.18s ease;
     }
+
+    .donation-btn:hover:not(:disabled) {
+      background: rgba(0, 136, 204, 0.12);
+      transform: translateY(-1px);
+    }
+
+    .donation-btn:active:not(:disabled) {
+      transform: translateY(0);
+      opacity: 0.92;
+    }
+
     .donation-btn:disabled {
       color: var(--tg-theme-hint-color, #999);
-      opacity: 0.55;
+      background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+      opacity: 0.45;
       cursor: not-allowed;
+    }
+
+    #status {
+      font-size: 15px;
+      color: var(--tg-theme-hint-color, #999);
+      text-align: center;
+      min-height: 24px;
+      margin-top: 8px;
     }
 
     .confirm-box {
@@ -51,6 +73,7 @@
       width: 100%;
       display: none;
     }
+
     .confirm-box.show { display: block; }
   </style>
 </head>
@@ -62,9 +85,8 @@
 
     <div class="donation-grid" id="buttons"></div>
 
-    <div id="status" style="font-size:15px; color:var(--tg-theme-hint-color,#999); text-align:center; min-height:24px;"></div>
+    <div id="status"></div>
 
-    <!-- Confirmation after opening payment -->
     <div class="confirm-box" id="confirmBox">
       <p style="margin:0 0 12px; font-weight:600;">Did you complete the payment?</p>
       <button id="paidBtn" style="width:100%; padding:14px; margin-bottom:8px; background:#0088cc; color:white; border:none; border-radius:10px; font-weight:600;">✅ Yes, I paid</button>
@@ -83,40 +105,61 @@
     const cancelBtn = document.getElementById('cancelBtn');
 
     let currentLink = null;
+    let currentAmount = null;
 
-    // Render buttons
-    function renderButtons() {
+    // Fetch current availability from backend
+    async function fetchAvailability() {
+      try {
+        const res = await fetch('/api/reserve?all=true');
+        const data = await res.json();
+        return data.availability || {};
+      } catch (e) {
+        console.warn('Failed to fetch availability', e);
+        return {};
+      }
+    }
+
+    async function renderButtons() {
+      const availability = await fetchAvailability();
       const grid = document.getElementById('buttons');
       grid.innerHTML = '';
+
       [100,200,300,400,500,600,700,800].forEach(amount => {
         const btn = document.createElement('button');
         btn.className = 'donation-btn';
         btn.textContent = `$${amount}`;
         btn.dataset.amount = amount;
-        btn.addEventListener('click', () => reserveAndOpen(amount));
+
+        const availCount = availability[amount] || 0;
+        btn.disabled = availCount === 0;
+
+        btn.addEventListener('click', () => {
+          if (availCount > 0) reserveAndOpen(amount);
+        });
+
         grid.appendChild(btn);
       });
     }
 
     async function reserveAndOpen(amount) {
-      statusEl.textContent = 'Reserving link...';
-      
+      statusEl.textContent = 'Reserving payment link...';
+
       try {
         const res = await fetch(`/api/reserve?amount=${amount}`);
         const data = await res.json();
 
         if (!res.ok) {
-          tg.showAlert(data.error || 'No links available right now');
+          tg.showAlert(data.error || 'No available links right now');
           statusEl.textContent = '';
           return;
         }
 
         currentLink = data.widgetUrl;
+        currentAmount = amount;
 
         statusEl.textContent = `Opening $${amount} payment...`;
         tg.openLink(currentLink);
 
-        // Show confirmation buttons
         confirmBox.classList.add('show');
 
       } catch (e) {
@@ -125,7 +168,6 @@
       }
     }
 
-    // Confirmation handlers
     paidBtn.onclick = async () => {
       if (!currentLink) return;
       await fetch('/api/reserve', {
@@ -133,10 +175,11 @@
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ link: currentLink, action: 'paid' })
       });
-      tg.showAlert('Thank you! Wallet marked as used.');
+      tg.showAlert('Thank you! Payment confirmed.');
       confirmBox.classList.remove('show');
-      statusEl.textContent = 'Payment confirmed ✓';
+      statusEl.textContent = '';
       currentLink = null;
+      await renderButtons(); // refresh all buttons
     };
 
     cancelBtn.onclick = async () => {
@@ -150,9 +193,13 @@
       confirmBox.classList.remove('show');
       statusEl.textContent = '';
       currentLink = null;
+      await renderButtons(); // refresh
     };
 
+    // Initial render + refresh every 15 seconds (to show expired reservations)
     renderButtons();
+    setInterval(renderButtons, 15000);
+
     tg.MainButton.hide();
   </script>
 </body>
