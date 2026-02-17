@@ -6,6 +6,10 @@
   <title>Support Me</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       margin: 0;
@@ -16,13 +20,14 @@
       display: flex;
       flex-direction: column;
       align-items: center;
+      justify-content: flex-start;
     }
 
     .container {
       width: 100%;
       max-width: 420px;
       padding: 24px 16px;
-      box-sizing: border-box;
+      margin: 0 auto;
     }
 
     h1 {
@@ -72,15 +77,17 @@
       margin: 8px 0 16px;
     }
 
-    /* ==================== CONFIRMATION CARD ==================== */
+    /* ==================== FIXED CONFIRMATION CARD ==================== */
     .confirm-card {
       width: 100%;
+      max-width: 380px;
+      margin: 12px auto 0;
       background: var(--tg-theme-secondary-bg-color, #f8f9fa);
       border-radius: 16px;
       padding: 20px 16px;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+      overflow: hidden;
       display: none;
-      margin-top: 12px;
     }
 
     .confirm-card.show {
@@ -137,7 +144,7 @@
 
     <div id="status"></div>
 
-    <!-- Beautiful confirmation card -->
+    <!-- Centered confirmation card -->
     <div class="confirm-card" id="confirmCard">
       <h3>Did you complete the payment?</h3>
       <button class="yes-btn" id="paidBtn">
@@ -150,6 +157,7 @@
   </div>
 
   <script>
+    // Your existing script here (unchanged)
     const tg = window.Telegram.WebApp;
     tg.ready();
     tg.expand();
@@ -161,12 +169,18 @@
 
     let currentLink = null;
 
-    // Render buttons with availability
-    async function renderButtons() {
-      const res = await fetch('/api/reserve?all=true');
-      const data = await res.json();
-      const availability = data.availability || {};
+    async function fetchAvailability() {
+      try {
+        const res = await fetch('/api/reserve?all=true');
+        const data = await res.json();
+        return data.availability || {};
+      } catch (e) {
+        return {};
+      }
+    }
 
+    async function renderButtons() {
+      const availability = await fetchAvailability();
       const grid = document.getElementById('buttons');
       grid.innerHTML = '';
 
@@ -190,7 +204,7 @@
         const data = await res.json();
 
         if (!res.ok) {
-          tg.showAlert(data.error || 'No links available');
+          tg.showAlert(data.error || 'No available links');
           statusEl.textContent = '';
           return;
         }
@@ -235,7 +249,6 @@
       renderButtons();
     };
 
-    // Initial load + auto refresh
     renderButtons();
     setInterval(renderButtons, 15000);
 
