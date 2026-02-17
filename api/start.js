@@ -13,7 +13,7 @@ export default async function handler(req, res) {
 
     const reply = {
       chat_id: chatId,
-      text: `Hi ${firstName}! Tap 'Open App' button below to open the mini app and donate.`
+      text: `Hi ${firstName}! Tap 'Open App' button below to open the mini app and be able to donate.`
     };
 
     // Send reply via Telegram API
