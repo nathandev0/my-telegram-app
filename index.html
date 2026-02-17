@@ -27,20 +27,36 @@
       gap: 12px;
       margin-bottom: 24px;
     }
+
     .donation-btn {
-      height: 54px;
-      font-size: 17px;
-      font-weight: 600;
-      color: var(--tg-theme-button-color, #0088cc);
-      background: var(--tg-theme-secondary-bg-color, #f0f0f0);
-      border: none;
-      border-radius: 12px;
-      cursor: pointer;
+    height: 54px;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--tg-theme-button-color, #0088cc);
+    background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.18s ease;
     }
+
+    .donation-btn:hover:not(:disabled) {
+    background: rgba(0, 136, 204, 0.08);
+    transform: translateY(-1px);
+    }
+
+    .donation-btn:active:not(:disabled) {
+    transform: translateY(0);
+    opacity: 0.92;
+    }
+
     .donation-btn:disabled {
-      color: var(--tg-theme-hint-color, #999);
-      opacity: 0.55;
-      cursor: not-allowed;
+    color: #a0a0a0;
+    background: #e8e8e8;
+    opacity: 0.55;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
     }
 
     .confirm-box {
@@ -94,6 +110,10 @@
         btn.textContent = `$${amount}`;
         btn.dataset.amount = amount;
         btn.addEventListener('click', () => reserveAndOpen(amount));
+        if (btn.disabled) {
+            tg.showAlert('No available payment links for this amount right now. Try another amount or wait a minute.');
+            return;
+        }
         grid.appendChild(btn);
       });
     }
