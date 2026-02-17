@@ -1,4 +1,4 @@
-// api/reserve.js - Pure Vercel Blob (no Redis, simple persistent file)
+// api/reserve.js - Pure Vercel Blob (no Redis, simple & reliable)
 
 import { put, get } from '@vercel/blob';
 
@@ -11,12 +11,10 @@ async function getLinksPool() {
 
     const res = await fetch(url);
     const pool = await res.json();
-    console.log('Loaded pool from Blob, counts:', 
-      Object.fromEntries(Object.entries(pool).map(([k,v]) => [k, v.length]))
-    );
+    console.log('✅ Loaded pool from Blob');
     return pool;
   } catch (e) {
-    console.log('Blob not found or error - initializing fresh pool', e);
+    console.log('Blob not found - initializing fresh pool');
     const initial = {
       "100": ["https://tinyurl.com/ye7dfa8x"],
       "200": ["https://tinyurl.com/2sxktakk"],
@@ -32,7 +30,7 @@ async function getLinksPool() {
       addRandomSuffix: false,
       allowOverwrite: true,
     });
-    console.log('Initial pool saved to Blob');
+    console.log('✅ Initial pool saved to Blob');
     return initial;
   }
 }
@@ -43,7 +41,7 @@ async function saveLinksPool(pool) {
     addRandomSuffix: false,
     allowOverwrite: true,
   });
-  console.log('Saved updated pool to Blob');
+  console.log('✅ Saved updated pool to Blob');
 }
 
 let reservations = new Map(); // temporary 90s reservation
