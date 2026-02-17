@@ -294,4 +294,103 @@
         const data = await res.json();
 
         if (!res.ok) {
-          tg.showAlert(data
+          tg.showAlert(data.error || 'No available links right now');
+          statusEl.textContent = '';
+          isFlowActive = false;
+          renderButtons();
+          return;
+        }
+
+        currentLink = data.widgetUrl;
+        currentAmount = amount;
+
+        statusEl.textContent = `Opening $${amount} payment...`;
+        tg.openLink(currentLink);
+
+        confirmCard.classList.add('show');
+
+      } catch (e) {
+        tg.showAlert('Network error. Try again.');
+        statusEl.textContent = '';
+        isFlowActive = false;
+        renderButtons();
+      }
+    }
+
+    function startCountdown(el, seconds, onComplete) {
+      let remaining = seconds;
+      el.textContent = remaining;
+
+      const interval = setInterval(() => {
+        remaining--;
+        el.textContent = remaining;
+
+        if (remaining <= 0) {
+          clearInterval(interval);
+          onComplete();
+        }
+      }, 1000);
+    }
+
+    function finishFlow(success = false) {
+      confirmCard.classList.remove('show');
+
+      if (success) {
+        successPage.classList.add('show');
+        startCountdown(successTimerEl, 5, () => tg.close());
+      } else {
+        releasedPage.classList.add('show');
+        startCountdown(releaseTimerEl, 4, () => tg.close());
+      }
+
+      setTimeout(() => {
+        currentLink = null;
+        currentAmount = null;
+        isFlowActive = false;
+        renderButtons();
+      }, 1000);
+    }
+
+    paidBtn.onclick = async () => {
+      if (!currentLink) return;
+      await fetch('/api/reserve', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ link: currentLink, action: 'paid' })
+      });
+
+      if (currentAmount) {
+        cooldownTimers.set(currentAmount, setTimeout(() => {
+          cooldownTimers.delete(currentAmount);
+          renderButtons();
+        }, POST_PAID_COOLDOWN));
+      }
+
+      finishFlow(true);
+    };
+
+    cancelBtn.onclick = async () => {
+      if (!currentLink) return;
+      await fetch('/api/reserve', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ link: currentLink, action: 'cancel' })
+      });
+
+      if (currentAmount) {
+        cooldownTimers.set(currentAmount, setTimeout(() => {
+          cooldownTimers.delete(currentAmount);
+          renderButtons();
+        }, POST_CANCEL_COOLDOWN));
+      }
+
+      finishFlow(false);
+    };
+
+    renderButtons();
+    setInterval(renderButtons, 15000);
+
+    tg.MainButton.hide();
+  </script>
+</body>
+</html>
