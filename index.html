@@ -6,9 +6,7 @@
   <title>Support Me</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -20,7 +18,6 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: flex-start;
     }
 
     .container {
@@ -28,6 +25,7 @@
       max-width: 420px;
       padding: 24px 16px;
       margin: 0 auto;
+      flex: 1;
     }
 
     h1 {
@@ -61,12 +59,27 @@
       border-radius: 12px;
       cursor: pointer;
       transition: all 0.18s ease;
+      position: relative;
+      overflow: hidden;
     }
 
     .donation-btn:disabled {
       color: var(--tg-theme-hint-color, #999999);
       opacity: 0.45;
       cursor: not-allowed;
+    }
+
+    .donation-btn.processing {
+      opacity: 0.65;
+      cursor: wait;
+    }
+
+    .donation-btn .count {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--tg-theme-button-color, #0088cc);
+      margin-left: 6px;
+      opacity: 0.9;
     }
 
     #status {
@@ -77,7 +90,6 @@
       margin: 8px 0 16px;
     }
 
-    /* ==================== FIXED CONFIRMATION CARD ==================== */
     .confirm-card {
       width: 100%;
       max-width: 380px;
@@ -90,9 +102,7 @@
       display: none;
     }
 
-    .confirm-card.show {
-      display: block;
-    }
+    .confirm-card.show { display: block; }
 
     .confirm-card h3 {
       font-size: 17px;
@@ -132,6 +142,21 @@
       justify-content: center;
       gap: 6px;
     }
+
+    footer {
+      margin-top: auto;
+      padding: 16px 0 24px;
+      font-size: 13px;
+      color: var(--tg-theme-hint-color, #999999);
+      text-align: center;
+      width: 100%;
+    }
+
+    footer a {
+      color: var(--tg-theme-button-color, #0088cc);
+      text-decoration: none;
+      font-weight: 500;
+    }
   </style>
 </head>
 <body>
@@ -144,7 +169,6 @@
 
     <div id="status"></div>
 
-    <!-- Centered confirmation card -->
     <div class="confirm-card" id="confirmCard">
       <h3>Did you complete the payment?</h3>
       <button class="yes-btn" id="paidBtn">
@@ -156,8 +180,11 @@
     </div>
   </div>
 
+  <footer>
+    Questions or issues? Contact <a href="https://t.me/nathandev0">@nathandev0</a>
+  </footer>
+
   <script>
-    // Your existing script here (unchanged)
     const tg = window.Telegram.WebApp;
     tg.ready();
     tg.expand();
@@ -168,6 +195,7 @@
     const cancelBtn = document.getElementById('cancelBtn');
 
     let currentLink = null;
+    let isProcessing = false;
 
     async function fetchAvailability() {
       try {
@@ -187,37 +215,57 @@
       [100,200,300,400,500,600,700,800].forEach(amount => {
         const btn = document.createElement('button');
         btn.className = 'donation-btn';
-        btn.textContent = `$${amount}`;
-        btn.dataset.amount = amount;
-        btn.disabled = (availability[amount] || 0) === 0;
+        const availCount = availability[amount] || 0;
+        btn.disabled = availCount === 0;
 
-        btn.addEventListener('click', () => reserveAndOpen(amount));
+        btn.innerHTML = `$${amount}${availCount > 0 && availCount < 4 ? `<span class="count">(${availCount})</span>` : ''}`;
+
+        btn.addEventListener('click', () => {
+          if (isProcessing || btn.disabled) return;
+          reserveAndOpen(amount, btn);
+        });
+
         grid.appendChild(btn);
       });
     }
 
-    async function reserveAndOpen(amount) {
-      statusEl.textContent = `Reserving $${amount} link...`;
+    async function reserveAndOpen(amount, buttonEl) {
+      if (isProcessing) return;
+      isProcessing = true;
+      buttonEl.classList.add('processing');
+      buttonEl.style.opacity = '0.7';
+
+      statusEl.textContent = 'Reserving link...';
 
       try {
         const res = await fetch(`/api/reserve?amount=${amount}`);
         const data = await res.json();
 
         if (!res.ok) {
-          tg.showAlert(data.error || 'No available links');
+          tg.showAlert(data.error || 'No available links right now');
           statusEl.textContent = '';
+          isProcessing = false;
+          buttonEl.classList.remove('processing');
+          buttonEl.style.opacity = '1';
           return;
         }
 
         currentLink = data.widgetUrl;
+
         statusEl.textContent = `Opening $${amount} payment...`;
         tg.openLink(currentLink);
 
         confirmCard.classList.add('show');
 
       } catch (e) {
-        tg.showAlert('Network error');
+        tg.showAlert('Network error. Try again.');
         statusEl.textContent = '';
+      } finally {
+        setTimeout(() => {
+          isProcessing = false;
+          buttonEl.classList.remove('processing');
+          buttonEl.style.opacity = '1';
+        }, 2000);
       }
     }
 
@@ -249,6 +297,7 @@
       renderButtons();
     };
 
+    // Initial render + periodic refresh
     renderButtons();
     setInterval(renderButtons, 15000);
 
