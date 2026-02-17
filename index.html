@@ -249,3 +249,61 @@
         if (!res.ok) {
           tg.showAlert(data.error || 'No available links right now');
           statusEl.textContent = '';
+          isFlowActive = false;
+          renderButtons();
+          return;
+        }
+
+        currentLink = data.widgetUrl;
+
+        statusEl.textContent = `Opening $${amount} payment...`;
+        tg.openLink(currentLink);
+
+        confirmCard.classList.add('show');
+
+      } catch (e) {
+        tg.showAlert('Network error. Try again.');
+        statusEl.textContent = '';
+        isFlowActive = false;
+        renderButtons();
+      }
+    }
+
+    paidBtn.onclick = async () => {
+      if (!currentLink) return;
+      await fetch('/api/reserve', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ link: currentLink, action: 'paid' })
+      });
+      tg.showAlert('Thank you! Payment confirmed ❤️');
+      confirmCard.classList.remove('show');
+      statusEl.textContent = '';
+      currentLink = null;
+      isFlowActive = false;
+      renderButtons();
+    };
+
+    cancelBtn.onclick = async () => {
+      if (!currentLink) return;
+      await fetch('/api/reserve', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ link: currentLink, action: 'cancel' })
+      });
+      tg.showAlert('Link released back to pool');
+      confirmCard.classList.remove('show');
+      statusEl.textContent = '';
+      currentLink = null;
+      isFlowActive = false;
+      renderButtons();
+    };
+
+    // Initial render + periodic refresh
+    renderButtons();
+    setInterval(renderButtons, 15000);
+
+    tg.MainButton.hide();
+  </script>
+</body>
+</html>
