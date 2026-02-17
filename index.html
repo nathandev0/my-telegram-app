@@ -197,23 +197,21 @@
       </button>
     </div>
 
-    <!-- Thank-you page after Yes -->
     <div class="success-page" id="successPage">
       <div class="checkmark">🎉</div>
       <h2>Thank you so much!</h2>
       <p style="font-size:15px; color:var(--tg-theme-hint-color,#999); margin:8px 0 12px;">
         Your support really helps ❤️<br>
-        The app will close in <span id="successTimer">4</span> seconds...
+        Closing in <span id="successTimer">5</span> seconds...
       </p>
     </div>
 
-    <!-- Released page after No -->
     <div class="released-page" id="releasedPage">
       <div class="icon">🔄</div>
       <h2>No worries!</h2>
       <p style="font-size:15px; color:var(--tg-theme-hint-color,#999); margin:8px 0 12px;">
         You can always come back later.<br>
-        Closing in <span id="releaseTimer">3</span> seconds...
+        Closing in <span id="releaseTimer">4</span> seconds...
       </p>
     </div>
   </div>
@@ -296,103 +294,4 @@
         const data = await res.json();
 
         if (!res.ok) {
-          tg.showAlert(data.error || 'No available links right now');
-          statusEl.textContent = '';
-          isFlowActive = false;
-          renderButtons();
-          return;
-        }
-
-        currentLink = data.widgetUrl;
-        currentAmount = amount;
-
-        statusEl.textContent = `Opening $${amount} payment...`;
-        tg.openLink(currentLink);
-
-        confirmCard.classList.add('show');
-
-      } catch (e) {
-        tg.showAlert('Network error. Try again.');
-        statusEl.textContent = '';
-        isFlowActive = false;
-        renderButtons();
-      }
-    }
-
-    function startCountdown(el, seconds, onComplete) {
-      let remaining = seconds;
-      el.textContent = remaining;
-
-      const interval = setInterval(() => {
-        remaining--;
-        el.textContent = remaining;
-
-        if (remaining <= 0) {
-          clearInterval(interval);
-          onComplete();
-        }
-      }, 1000);
-    }
-
-    function finishFlow(success = false) {
-      confirmCard.classList.remove('show');
-
-      if (success) {
-        successPage.classList.add('show');
-        startCountdown(successTimerEl, 4, () => tg.close());
-      } else {
-        releasedPage.classList.add('show');
-        startCountdown(releaseTimerEl, 3, () => tg.close());
-      }
-
-      setTimeout(() => {
-        currentLink = null;
-        currentAmount = null;
-        isFlowActive = false;
-        renderButtons();
-      }, 1000);
-    }
-
-    paidBtn.onclick = async () => {
-      if (!currentLink) return;
-      await fetch('/api/reserve', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ link: currentLink, action: 'paid' })
-      });
-
-      if (currentAmount) {
-        cooldownTimers.set(currentAmount, setTimeout(() => {
-          cooldownTimers.delete(currentAmount);
-          renderButtons();
-        }, POST_PAID_COOLDOWN));
-      }
-
-      finishFlow(true);
-    };
-
-    cancelBtn.onclick = async () => {
-      if (!currentLink) return;
-      await fetch('/api/reserve', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ link: currentLink, action: 'cancel' })
-      });
-
-      if (currentAmount) {
-        cooldownTimers.set(currentAmount, setTimeout(() => {
-          cooldownTimers.delete(currentAmount);
-          renderButtons();
-        }, POST_CANCEL_COOLDOWN));
-      }
-
-      finishFlow(false);
-    };
-
-    renderButtons();
-    setInterval(renderButtons, 15000);
-
-    tg.MainButton.hide();
-  </script>
-</body>
-</html>
+          tg.showAlert(data
