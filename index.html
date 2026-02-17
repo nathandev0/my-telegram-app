@@ -81,37 +81,74 @@
     };
 
     // Simple in-memory used tracking (resets on reload — later use backend/storage)
-    const usedLinks = new Set();
+    const usedLinks = new Set(); // in-memory for now
 
-    document.querySelectorAll('button').forEach(btn => {
-      const amount = btn.dataset.amount;
+    const buttons = document.querySelectorAll('button[data-amount]');
+    const status = document.getElementById('status');
+    const webviewContainer = document.getElementById('webview-container');
 
-      function updateButton() {
+    // Create container for iframe if not present
+    if (!webviewContainer) {
+        const container = document.createElement('div');
+        container.id = 'webview-container';
+        container.style.display = 'none';
+        container.style.position = 'fixed';
+        container.style.inset = '0';
+        container.style.background = 'white';
+        container.style.zIndex = '9999';
+        container.innerHTML = `
+        <div style="height:50px;background:#222;color:white;padding:12px;display:flex;justify-content:space-between;align-items:center;">
+            <button id="close-webview" style="background:none;border:none;color:white;font-size:18px;">← Back</button>
+            <span>Payment</span>
+            <div style="width:40px;"></div>
+        </div>
+        <iframe id="payment-iframe" style="width:100%;height:calc(100% - 50px);border:none;"></iframe>
+        `;
+        document.body.appendChild(container);
+    }
+
+    // Close button handler
+    document.getElementById('close-webview')?.addEventListener('click', () => {
+        document.getElementById('webview-container').style.display = 'none';
+        document.getElementById('payment-iframe').src = 'about:blank';
+        status.textContent = 'Payment window closed';
+    });
+
+    buttons.forEach(btn => {
+        const amount = btn.dataset.amount;
+
+        function updateButtonState() {
         const available = (linksPool[amount] || []).filter(url => !usedLinks.has(url));
         btn.disabled = available.length === 0;
         btn.textContent = available.length === 0 ? `$${amount} (out)` : `$${amount}`;
-      }
-
-      updateButton();
-
-      btn.addEventListener('click', () => {
-        const available = (linksPool[amount] || []).filter(url => !usedLinks.has(url));
-        if (available.length === 0) {
-          tg.showAlert(`No available links for $${amount}`);
-          return;
         }
 
-        const link = available[0]; // or random: available[Math.floor(Math.random() * available.length)]
-        usedLinks.add(link);
+        updateButtonState();
 
-        tg.openLink(link);
-        updateButton();
+        btn.addEventListener('click', () => {
+        const available = (linksPool[amount] || []).filter(url => !usedLinks.has(url));
+        if (available.length === 0) {
+            tg.showAlert(`No available links for $${amount}`);
+            return;
+        }
 
-        document.getElementById('status').textContent = `Opening $${amount} payment...`;
-      });
+        const selectedLink = available[0];
+        usedLinks.add(selectedLink);
+
+        // Open in iframe (webview)
+        const iframe = document.getElementById('payment-iframe');
+        iframe.src = selectedLink;
+
+        document.getElementById('webview-container').style.display = 'block';
+
+        status.textContent = `Opening $${amount} payment...`;
+
+        updateButtonState();
+        });
     });
 
-    tg.MainButton.hide(); // We don't need it here
-  </script>
+    tg.MainButton.hide();
+    </script>
+    <div id="webview-container"></div>
 </body>
 </html>
