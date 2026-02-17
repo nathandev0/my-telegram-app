@@ -17,9 +17,27 @@
       flex-direction: column;
       align-items: center;
     }
-    .container { width: 100%; max-width: 420px; padding: 24px 16px; box-sizing: border-box; }
-    h1 { font-size: 28px; font-weight: 600; margin: 0 0 4px; text-align: center; }
-    .subtitle { font-size: 15px; color: var(--tg-theme-hint-color, #999); margin: 0 0 28px; text-align: center; }
+
+    .container {
+      width: 100%;
+      max-width: 420px;
+      padding: 24px 16px;
+      box-sizing: border-box;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 600;
+      margin: 0 0 4px;
+      text-align: center;
+    }
+
+    .subtitle {
+      font-size: 15px;
+      color: var(--tg-theme-hint-color, #999999);
+      margin: 0 0 28px;
+      text-align: center;
+    }
 
     .donation-grid {
       display: grid;
@@ -40,41 +58,73 @@
       transition: all 0.18s ease;
     }
 
-    .donation-btn:hover:not(:disabled) {
-      background: rgba(0, 136, 204, 0.12);
-      transform: translateY(-1px);
-    }
-
-    .donation-btn:active:not(:disabled) {
-      transform: translateY(0);
-      opacity: 0.92;
-    }
-
     .donation-btn:disabled {
-      color: var(--tg-theme-hint-color, #999);
-      background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+      color: var(--tg-theme-hint-color, #999999);
       opacity: 0.45;
       cursor: not-allowed;
     }
 
     #status {
       font-size: 15px;
-      color: var(--tg-theme-hint-color, #999);
+      color: var(--tg-theme-hint-color, #999999);
       text-align: center;
       min-height: 24px;
-      margin-top: 8px;
+      margin: 8px 0 16px;
     }
 
-    .confirm-box {
-      margin-top: 20px;
-      padding: 16px;
-      background: var(--tg-theme-secondary-bg-color, #f0f0f0);
-      border-radius: 12px;
+    /* ==================== CONFIRMATION CARD ==================== */
+    .confirm-card {
       width: 100%;
+      background: var(--tg-theme-secondary-bg-color, #f8f9fa);
+      border-radius: 16px;
+      padding: 20px 16px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
       display: none;
+      margin-top: 12px;
     }
 
-    .confirm-box.show { display: block; }
+    .confirm-card.show {
+      display: block;
+    }
+
+    .confirm-card h3 {
+      font-size: 17px;
+      font-weight: 600;
+      margin: 0 0 16px;
+      text-align: center;
+      color: var(--tg-theme-text-color, #000);
+    }
+
+    .yes-btn {
+      width: 100%;
+      background: #2481cc;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 17px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 2px 8px rgba(36, 129, 204, 0.3);
+    }
+
+    .no-btn {
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: #e53935;
+      font-size: 16px;
+      font-weight: 500;
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
   </style>
 </head>
 <body>
@@ -87,10 +137,15 @@
 
     <div id="status"></div>
 
-    <div class="confirm-box" id="confirmBox">
-      <p style="margin:0 0 12px; font-weight:600;">Did you complete the payment?</p>
-      <button id="paidBtn" style="width:100%; padding:14px; margin-bottom:8px; background:#0088cc; color:white; border:none; border-radius:10px; font-weight:600;">✅ Yes, I paid</button>
-      <button id="cancelBtn" style="width:100%; padding:14px; background:#f0f0f0; border:none; border-radius:10px; font-weight:600;">❌ No, release link</button>
+    <!-- Beautiful confirmation card -->
+    <div class="confirm-card" id="confirmCard">
+      <h3>Did you complete the payment?</h3>
+      <button class="yes-btn" id="paidBtn">
+        <span style="font-size:20px;">✅</span> Yes, I paid
+      </button>
+      <button class="no-btn" id="cancelBtn">
+        ❌ No, release link
+      </button>
     </div>
   </div>
 
@@ -100,27 +155,18 @@
     tg.expand();
 
     const statusEl = document.getElementById('status');
-    const confirmBox = document.getElementById('confirmBox');
+    const confirmCard = document.getElementById('confirmCard');
     const paidBtn = document.getElementById('paidBtn');
     const cancelBtn = document.getElementById('cancelBtn');
 
     let currentLink = null;
-    let currentAmount = null;
 
-    // Fetch current availability from backend
-    async function fetchAvailability() {
-      try {
-        const res = await fetch('/api/reserve?all=true');
-        const data = await res.json();
-        return data.availability || {};
-      } catch (e) {
-        console.warn('Failed to fetch availability', e);
-        return {};
-      }
-    }
-
+    // Render buttons with availability
     async function renderButtons() {
-      const availability = await fetchAvailability();
+      const res = await fetch('/api/reserve?all=true');
+      const data = await res.json();
+      const availability = data.availability || {};
+
       const grid = document.getElementById('buttons');
       grid.innerHTML = '';
 
@@ -129,41 +175,34 @@
         btn.className = 'donation-btn';
         btn.textContent = `$${amount}`;
         btn.dataset.amount = amount;
+        btn.disabled = (availability[amount] || 0) === 0;
 
-        const availCount = availability[amount] || 0;
-        btn.disabled = availCount === 0;
-
-        btn.addEventListener('click', () => {
-          if (availCount > 0) reserveAndOpen(amount);
-        });
-
+        btn.addEventListener('click', () => reserveAndOpen(amount));
         grid.appendChild(btn);
       });
     }
 
     async function reserveAndOpen(amount) {
-      statusEl.textContent = 'Reserving payment link...';
+      statusEl.textContent = `Reserving $${amount} link...`;
 
       try {
         const res = await fetch(`/api/reserve?amount=${amount}`);
         const data = await res.json();
 
         if (!res.ok) {
-          tg.showAlert(data.error || 'No available links right now');
+          tg.showAlert(data.error || 'No links available');
           statusEl.textContent = '';
           return;
         }
 
         currentLink = data.widgetUrl;
-        currentAmount = amount;
-
         statusEl.textContent = `Opening $${amount} payment...`;
         tg.openLink(currentLink);
 
-        confirmBox.classList.add('show');
+        confirmCard.classList.add('show');
 
       } catch (e) {
-        tg.showAlert('Network error. Try again.');
+        tg.showAlert('Network error');
         statusEl.textContent = '';
       }
     }
@@ -175,11 +214,11 @@
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ link: currentLink, action: 'paid' })
       });
-      tg.showAlert('Thank you! Payment confirmed.');
-      confirmBox.classList.remove('show');
+      tg.showAlert('Thank you! Payment confirmed ❤️');
+      confirmCard.classList.remove('show');
       statusEl.textContent = '';
       currentLink = null;
-      await renderButtons(); // refresh all buttons
+      renderButtons();
     };
 
     cancelBtn.onclick = async () => {
@@ -189,14 +228,14 @@
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ link: currentLink, action: 'cancel' })
       });
-      tg.showAlert('Link released back to pool.');
-      confirmBox.classList.remove('show');
+      tg.showAlert('Link released back to pool');
+      confirmCard.classList.remove('show');
       statusEl.textContent = '';
       currentLink = null;
-      await renderButtons(); // refresh
+      renderButtons();
     };
 
-    // Initial render + refresh every 15 seconds (to show expired reservations)
+    // Initial load + auto refresh
     renderButtons();
     setInterval(renderButtons, 15000);
 
