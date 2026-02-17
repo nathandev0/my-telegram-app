@@ -13,7 +13,7 @@ export default async function handler(req, res) {
 
     const reply = {
       chat_id: chatId,
-      text: `Hi ${firstName}! 👋\n\nTo support me, just tap the **Open App** button below ↓\n\nIt will open the donation screen where you can choose any amount. Thank you in advance! ❤️`,
+      text: `Hi ${firstName}! 👋\n\nTap 'Open App' button below to support me ↓`,
       reply_markup: {
         keyboard: [
           [{ text: 'Open App', web_app: { url: 'https://your-mini-app-name.vercel.app' } }]
