@@ -62,9 +62,12 @@
       overflow: hidden;
     }
 
-    .donation-btn:disabled, .donation-btn.flow-active, .donation-btn.cooldown {
+    .donation-btn:disabled,
+    .donation-btn.flow-active,
+    .donation-btn.cooldown {
       opacity: 0.5;
       cursor: not-allowed;
+      transform: none;
     }
 
     .donation-btn .counter {
@@ -246,6 +249,7 @@
     async function fetchAvailability() {
       try {
         const res = await fetch('/api/reserve?all=true');
+        if (!res.ok) return {};
         const data = await res.json();
         return data.availability || {};
       } catch (e) {
@@ -304,7 +308,7 @@
         currentLink = data.widgetUrl;
         currentAmount = amount;
 
-        statusEl.textContent = `Opening $${amount} payment link...`;
+        statusEl.textContent = `Opening $${amount} payment...`;
         tg.openLink(currentLink);
 
         confirmCard.classList.add('show');
