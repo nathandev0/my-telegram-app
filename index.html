@@ -63,23 +63,25 @@
       overflow: hidden;
     }
 
-    .donation-btn:disabled {
-      color: var(--tg-theme-hint-color, #999999);
-      opacity: 0.45;
+    .donation-btn:disabled,
+    .donation-btn.flow-active {
+      opacity: 0.5;
       cursor: not-allowed;
+      transform: none;
     }
 
-    .donation-btn.processing {
-      opacity: 0.65;
-      cursor: wait;
-    }
-
-    .donation-btn .count {
-      font-size: 13px;
+    .donation-btn .counter {
+      position: absolute;
+      top: 4px;
+      right: 8px;
+      font-size: 12px;
       font-weight: 500;
-      color: var(--tg-theme-button-color, #0088cc);
-      margin-left: 6px;
-      opacity: 0.9;
+      color: var(--tg-theme-hint-color, #999999);
+      background: rgba(0,0,0,0.08);
+      padding: 2px 6px;
+      border-radius: 10px;
+      line-height: 1;
+      pointer-events: none;
     }
 
     #status {
@@ -181,7 +183,7 @@
   </div>
 
   <footer>
-    Questions or issues? Contact <a href="https://t.me/nathandev0">@nathandev0</a>
+    Developed by <a href="https://t.me/nathandev0">@nathandev0</a>
   </footer>
 
   <script>
@@ -195,7 +197,7 @@
     const cancelBtn = document.getElementById('cancelBtn');
 
     let currentLink = null;
-    let isProcessing = false;
+    let isFlowActive = false;
 
     async function fetchAvailability() {
       try {
@@ -216,12 +218,17 @@
         const btn = document.createElement('button');
         btn.className = 'donation-btn';
         const availCount = availability[amount] || 0;
-        btn.disabled = availCount === 0;
+        btn.disabled = availCount === 0 || isFlowActive;
 
-        btn.innerHTML = `$${amount}${availCount > 0 && availCount < 4 ? `<span class="count">(${availCount})</span>` : ''}`;
+        let counterHTML = '';
+        if (availCount > 0 && availCount < 4) {
+          counterHTML = `<span class="counter">${availCount}</span>`;
+        }
+
+        btn.innerHTML = `$${amount}${counterHTML}`;
 
         btn.addEventListener('click', () => {
-          if (isProcessing || btn.disabled) return;
+          if (isFlowActive || btn.disabled) return;
           reserveAndOpen(amount, btn);
         });
 
@@ -230,10 +237,8 @@
     }
 
     async function reserveAndOpen(amount, buttonEl) {
-      if (isProcessing) return;
-      isProcessing = true;
-      buttonEl.classList.add('processing');
-      buttonEl.style.opacity = '0.7';
+      isFlowActive = true;
+      renderButtons(); // disable all buttons immediately
 
       statusEl.textContent = 'Reserving link...';
 
@@ -244,64 +249,3 @@
         if (!res.ok) {
           tg.showAlert(data.error || 'No available links right now');
           statusEl.textContent = '';
-          isProcessing = false;
-          buttonEl.classList.remove('processing');
-          buttonEl.style.opacity = '1';
-          return;
-        }
-
-        currentLink = data.widgetUrl;
-
-        statusEl.textContent = `Opening $${amount} payment...`;
-        tg.openLink(currentLink);
-
-        confirmCard.classList.add('show');
-
-      } catch (e) {
-        tg.showAlert('Network error. Try again.');
-        statusEl.textContent = '';
-      } finally {
-        setTimeout(() => {
-          isProcessing = false;
-          buttonEl.classList.remove('processing');
-          buttonEl.style.opacity = '1';
-        }, 2000);
-      }
-    }
-
-    paidBtn.onclick = async () => {
-      if (!currentLink) return;
-      await fetch('/api/reserve', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ link: currentLink, action: 'paid' })
-      });
-      tg.showAlert('Thank you! Payment confirmed ❤️');
-      confirmCard.classList.remove('show');
-      statusEl.textContent = '';
-      currentLink = null;
-      renderButtons();
-    };
-
-    cancelBtn.onclick = async () => {
-      if (!currentLink) return;
-      await fetch('/api/reserve', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ link: currentLink, action: 'cancel' })
-      });
-      tg.showAlert('Link released back to pool');
-      confirmCard.classList.remove('show');
-      statusEl.textContent = '';
-      currentLink = null;
-      renderButtons();
-    };
-
-    // Initial render + periodic refresh
-    renderButtons();
-    setInterval(renderButtons, 15000);
-
-    tg.MainButton.hide();
-  </script>
-</body>
-</html>
