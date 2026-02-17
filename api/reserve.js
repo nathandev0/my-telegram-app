@@ -1,4 +1,4 @@
-// api/reserve.js - Reliable Vercel Blob storage (no Redis)
+// api/reserve.js — Vercel Blob — permanent link removal
 
 import { put, get } from '@vercel/blob';
 
@@ -7,16 +7,18 @@ const BLOB_PATH = 'donation-links.json';
 async function getLinksPool() {
   try {
     const { url } = await get(BLOB_PATH);
-    if (!url) throw new Error('Blob not found');
+    if (!url) throw new Error('No blob');
 
-    const res = await fetch(url + '?_=' + Date.now()); // cache bust
+    const res = await fetch(url + '?_=' + Date.now()); // prevent browser cache
     if (!res.ok) throw new Error('Fetch failed');
 
     const pool = await res.json();
-    console.log('Loaded pool from Blob:', Object.keys(pool).map(k => `${k}: ${pool[k].length}`));
+    console.log('Loaded pool from Blob — counts:', 
+      Object.fromEntries(Object.entries(pool).map(([k,v]) => [k, v.length]))
+    );
     return pool;
   } catch (e) {
-    console.log('Blob not found or error - initializing fresh pool', e);
+    console.log('Blob missing/error — initializing fresh pool', e);
     const initial = {
       "100": ["https://tinyurl.com/ye7dfa8x"],
       "200": ["https://tinyurl.com/2sxktakk"],
@@ -32,7 +34,7 @@ async function getLinksPool() {
       addRandomSuffix: false,
       allowOverwrite: true,
     });
-    console.log('Initial pool saved to Blob');
+    console.log('Fresh initial pool saved to Blob');
     return initial;
   }
 }
@@ -43,10 +45,10 @@ async function saveLinksPool(pool) {
     addRandomSuffix: false,
     allowOverwrite: true,
   });
-  console.log('Saved updated pool to Blob');
+  console.log('Updated pool saved to Blob');
 }
 
-let reservations = new Map();
+let reservations = new Map(); // temporary 90-second reservations
 
 function cleanExpired() {
   const now = Date.now();
@@ -101,6 +103,7 @@ export default async function handler(req, res) {
       }
       if (removed) {
         await saveLinksPool(pool);
+        console.log('Permanently removed paid link:', link);
       }
       reservations.delete(link);
       return res.json({ success: true });
