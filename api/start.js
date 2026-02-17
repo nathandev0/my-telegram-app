@@ -13,14 +13,7 @@ export default async function handler(req, res) {
 
     const reply = {
       chat_id: chatId,
-      text: `Hi ${firstName}! 👋\n\nTap 'Open App' button below to support me ↓`,
-      reply_markup: {
-        keyboard: [
-          [{ text: 'Open App', web_app: { url: 'https://your-mini-app-name.vercel.app' } }]
-        ],
-        resize_keyboard: true,
-        one_time_keyboard: false
-      }
+      text: `Hi ${firstName}! Tap 'Open App' button below to open the app`
     };
 
     // Send reply via Telegram API
