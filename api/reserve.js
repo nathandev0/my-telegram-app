@@ -1,15 +1,20 @@
-import { Redis } from '@upstash/redis';
+// api/reserve.js - Vercel Blob (persistent file storage)
 
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL,
-  token: process.env.KV_REST_API_TOKEN,
-});
+import { put, get } from '@vercel/blob';
 
-const POOL_KEY = 'donation_links_pool';
+const BLOB_PATH = 'donation-links.json';
 
 async function getLinksPool() {
-  const raw = await redis.get(POOL_KEY);
-  if (!raw) {
+  try {
+    const { url } = await get(BLOB_PATH);
+    if (!url) throw new Error('Blob not found');
+
+    const res = await fetch(url);
+    const pool = await res.json();
+    console.log('Loaded pool from Blob:', Object.keys(pool).map(k => `${k}: ${pool[k].length} links`));
+    return pool;
+  } catch (e) {
+    console.log('Initializing fresh pool in Blob', e);
     const initial = {
       "100": ["https://tinyurl.com/ye7dfa8x"],
       "200": ["https://tinyurl.com/2sxktakk"],
@@ -20,47 +25,58 @@ async function getLinksPool() {
       "700": ["https://tinyurl.com/3aave7py"],
       "800": ["https://tinyurl.com/ybu9ymsd"],
     };
-    await redis.set(POOL_KEY, JSON.stringify(initial));
+    await put(BLOB_PATH, JSON.stringify(initial), {
+      access: 'public',
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    });
     return initial;
   }
-  return JSON.parse(raw);
 }
 
 async function saveLinksPool(pool) {
-  await redis.set(POOL_KEY, JSON.stringify(pool));
+  await put(BLOB_PATH, JSON.stringify(pool), {
+    access: 'public',
+    addRandomSuffix: false,
+    allowOverwrite: true,
+  });
+  console.log('Saved updated pool to Blob');
+}
+
+let reservations = new Map();
+
+function cleanExpired() {
+  const now = Date.now();
+  for (const [link, data] of reservations.entries()) {
+    if (now - data.reservedAt > 90000) reservations.delete(link);
+  }
 }
 
 export default async function handler(req, res) {
+  cleanExpired();
+
   if (req.method === 'GET' && req.query.all === 'true') {
     const pool = await getLinksPool();
     const availability = {};
     for (const amount in pool) {
-      availability[amount] = pool[amount].length;
+      const available = pool[amount].filter(l => !reservations.has(l));
+      availability[amount] = available.length;
     }
     return res.json({ availability });
   }
 
   if (req.method === 'GET') {
     const { amount } = req.query;
-    if (!amount) return res.status(400).json({ error: 'Missing amount' });
-
     const pool = await getLinksPool();
-    if (!pool[amount] || pool[amount].length === 0) {
-      return res.status(503).json({ error: 'No available links for this amount' });
+    if (!pool[amount]) return res.status(400).json({ error: 'Invalid amount' });
+
+    const available = pool[amount].filter(l => !reservations.has(l));
+    if (available.length === 0) {
+      return res.status(503).json({ error: 'No available links' });
     }
 
-    // Atomic lock: try to reserve the first available link
-    const link = pool[amount][0]; // take first (you can randomize later)
-    const lockKey = `lock:${link}`;
-    const acquired = await redis.set(lockKey, 'locked', { NX: true, PX: 90000 }); // 90s TTL
-
-    if (!acquired) {
-      return res.status(503).json({ error: 'This link is currently being used by another user. Try again in 90 seconds.' });
-    }
-
-    // Remove from pool (optimistic - if paid later, it's gone)
-    pool[amount] = pool[amount].slice(1);
-    await saveLinksPool(pool);
+    const link = available[0];
+    reservations.set(link, { reservedAt: Date.now() });
 
     return res.json({ widgetUrl: link });
   }
@@ -69,30 +85,26 @@ export default async function handler(req, res) {
     const { link, action } = req.body;
     if (!link || !action) return res.status(400).json({ error: 'Missing params' });
 
-    const lockKey = `lock:${link}`;
-    await redis.del(lockKey); // release lock
+    const pool = await getLinksPool();
 
     if (action === 'paid') {
-      // Already removed on reserve - nothing more needed
+      let removed = false;
+      for (const amt in pool) {
+        const before = pool[amt].length;
+        pool[amt] = pool[amt].filter(l => l !== link);
+        if (pool[amt].length < before) removed = true;
+      }
+      if (removed) {
+        await saveLinksPool(pool);
+      }
+      reservations.delete(link);
       return res.json({ success: true });
     }
 
     if (action === 'cancel') {
-      // Add back to pool if cancelled
-      const pool = await getLinksPool();
-      let added = false;
-      for (const amt in pool) {
-        if (!pool[amt].includes(link)) {
-          pool[amt].push(link);
-          added = true;
-          break;
-        }
-      }
-      if (added) await saveLinksPool(pool);
+      reservations.delete(link);
       return res.json({ success: true });
     }
-
-    return res.status(400).json({ error: 'Invalid action' });
   }
 
   res.status(405).json({ error: 'Method not allowed' });
