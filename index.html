@@ -23,7 +23,7 @@
     .container {
       width: 100%;
       max-width: 420px;
-      padding: 24px 16px;           /* ← back to normal top padding */
+      padding: 24px 16px;
       margin: 0 auto;
     }
 
@@ -95,7 +95,7 @@
       margin: 12px auto 0;
       background: var(--tg-theme-secondary-bg-color, #f8f9fa);
       border-radius: 16px;
-      padding: 20px 16px;
+      padding: 24px 16px;
       box-shadow: 0 4px 20px rgba(0,0,0,0.06);
       overflow: hidden;
       display: none;
@@ -107,7 +107,7 @@
     }
 
     .confirm-card h3, .success-page h2, .released-page h2 {
-      font-size: 17px;
+      font-size: 18px;
       font-weight: 600;
       margin: 0 0 16px;
     }
@@ -121,7 +121,13 @@
     .released-page .icon {
       font-size: 48px;
       margin-bottom: 16px;
-      color: #ff3b30;
+      color: #ff9500;
+    }
+
+    .timer {
+      font-size: 15px;
+      color: var(--tg-theme-hint-color, #999999);
+      margin-top: 12px;
     }
 
     .yes-btn {
@@ -191,21 +197,23 @@
       </button>
     </div>
 
+    <!-- Thank-you page after Yes -->
     <div class="success-page" id="successPage">
       <div class="checkmark">🎉</div>
-      <h2>Thank you!</h2>
-      <p style="font-size:15px; color:var(--tg-theme-hint-color,#999); margin:8px 0 20px;">
-        Your support means a lot ❤️<br>
-        Returning to chat...
+      <h2>Thank you so much!</h2>
+      <p style="font-size:15px; color:var(--tg-theme-hint-color,#999); margin:8px 0 12px;">
+        Your support really helps ❤️<br>
+        The app will close in <span id="successTimer">4</span> seconds...
       </p>
     </div>
 
+    <!-- Released page after No -->
     <div class="released-page" id="releasedPage">
       <div class="icon">🔄</div>
-      <h2>Link released</h2>
-      <p style="font-size:15px; color:var(--tg-theme-hint-color,#999); margin:8px 0 20px;">
-        The payment link is back in the pool.<br>
-        You can try again or choose another amount.
+      <h2>No worries!</h2>
+      <p style="font-size:15px; color:var(--tg-theme-hint-color,#999); margin:8px 0 12px;">
+        You can always come back later.<br>
+        Closing in <span id="releaseTimer">3</span> seconds...
       </p>
     </div>
   </div>
@@ -225,6 +233,8 @@
     const releasedPage = document.getElementById('releasedPage');
     const paidBtn = document.getElementById('paidBtn');
     const cancelBtn = document.getElementById('cancelBtn');
+    const successTimerEl = document.getElementById('successTimer');
+    const releaseTimerEl = document.getElementById('releaseTimer');
 
     let currentLink = null;
     let currentAmount = null;
@@ -309,15 +319,30 @@
       }
     }
 
-    async function finishFlow(success = false) {
+    function startCountdown(el, seconds, onComplete) {
+      let remaining = seconds;
+      el.textContent = remaining;
+
+      const interval = setInterval(() => {
+        remaining--;
+        el.textContent = remaining;
+
+        if (remaining <= 0) {
+          clearInterval(interval);
+          onComplete();
+        }
+      }, 1000);
+    }
+
+    function finishFlow(success = false) {
       confirmCard.classList.remove('show');
 
       if (success) {
         successPage.classList.add('show');
-        setTimeout(() => tg.close(), 4000);
+        startCountdown(successTimerEl, 4, () => tg.close());
       } else {
         releasedPage.classList.add('show');
-        setTimeout(() => tg.close(), 3000);
+        startCountdown(releaseTimerEl, 3, () => tg.close());
       }
 
       setTimeout(() => {
