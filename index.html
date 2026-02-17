@@ -100,14 +100,8 @@
     }
 
     @media (max-width: 380px) {
-      .donation-grid {
-        grid-template-columns: 1fr;
-        gap: 10px;
-      }
-      .donation-btn {
-        height: 52px;
-        font-size: 16px;
-      }
+      .donation-grid { grid-template-columns: 1fr; gap: 10px; }
+      .donation-btn { height: 52px; font-size: 16px; }
     }
   </style>
 </head>
@@ -136,7 +130,7 @@
     tg.ready();
     tg.expand();
 
-    // Apply Telegram theme colors dynamically
+    // Apply theme
     document.documentElement.style.setProperty('--tg-bg', tg.themeParams.bg_color);
     document.documentElement.style.setProperty('--tg-text', tg.themeParams.text_color);
     document.documentElement.style.setProperty('--tg-hint', tg.themeParams.hint_color);
@@ -155,19 +149,44 @@
       "800": ["https://tinyurl.com/ybu9ymsd"],
     };
 
-    const usedLinks = new Set();
+    const STORAGE_KEY = 'used_donation_links';
+    let usedLinks = new Set();
+
     const statusEl = document.getElementById('status');
 
-    document.querySelectorAll('.donation-btn').forEach(btn => {
-      const amount = btn.dataset.amount;
+    // Load used links from Telegram Cloud Storage on start
+    tg.CloudStorage.getItem(STORAGE_KEY, (err, value) => {
+      if (!err && value) {
+        try {
+          const saved = JSON.parse(value);
+          usedLinks = new Set(saved);
+          updateAllButtons();
+        } catch (e) {
+          console.warn('Invalid used links data', e);
+        }
+      }
+      // Enable buttons after load
+      updateAllButtons();
+    });
 
-      function updateButton() {
+    function saveUsedLinks() {
+      const toSave = JSON.stringify(Array.from(usedLinks));
+      tg.CloudStorage.setItem(STORAGE_KEY, toSave, (err) => {
+        if (err) console.warn('CloudStorage save failed', err);
+      });
+    }
+
+    function updateAllButtons() {
+      document.querySelectorAll('.donation-btn').forEach(btn => {
+        const amount = btn.dataset.amount;
         const available = (linksPool[amount] || []).filter(url => !usedLinks.has(url));
         btn.disabled = available.length === 0;
         btn.textContent = `$${amount}`;
-      }
+      });
+    }
 
-      updateButton();
+    document.querySelectorAll('.donation-btn').forEach(btn => {
+      const amount = btn.dataset.amount;
 
       btn.addEventListener('click', () => {
         const available = (linksPool[amount] || []).filter(url => !usedLinks.has(url));
@@ -178,13 +197,13 @@
 
         const widgetUrl = available[0];
         usedLinks.add(widgetUrl);
+        saveUsedLinks(); // persist immediately
 
         statusEl.textContent = `Opening $${amount} payment…`;
         statusEl.classList.add('show');
 
         window.location.href = widgetUrl;
 
-        // Fallback in case redirect is blocked
         setTimeout(() => {
           if (document.body.innerHTML.includes('Support Me')) {
             tg.showAlert('Could not redirect. Try again.');
@@ -192,7 +211,7 @@
           }
         }, 1800);
 
-        updateButton();
+        updateAllButtons();
       });
     });
 
