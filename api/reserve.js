@@ -4,14 +4,20 @@ const { createClient } = require('@supabase/supabase-js');
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 async function handleReserve(req, res) {
-  const method = req.method;
+const method = req.method;
+  const thirtySecondsAgo = new Date(Date.now() - 30 * 1000).toISOString();
 
   if (method === 'GET') {
     const { all, amount } = req.query;
 
-    // Check how many links are left for the buttons
+    // --- FIX: Updated count logic ---
     if (all === 'true') {
-      const { data } = await supabase.from('payment_links').select('amount').eq('status', 'available');
+      const { data } = await supabase
+        .from('payment_links')
+        .select('amount')
+        // Count it if it's 'available' OR ('reserved' AND expired)
+        .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecondsAgo})`);
+      
       const counts = data.reduce((acc, curr) => {
         acc[curr.amount] = (acc[curr.amount] || 0) + 1;
         return acc;
@@ -19,8 +25,7 @@ async function handleReserve(req, res) {
       return res.json({ availability: counts });
     }
 
-    // Grab a link and "lock" it for 90 seconds
-    const thirtySecondsAgo = new Date(Date.now() - 30 * 1000).toISOString();    
+    // --- Reservation Logic (Already correct, but keep as is) ---
     const { data: link, error } = await supabase
     .from('payment_links')
     .select('*')
@@ -28,6 +33,7 @@ async function handleReserve(req, res) {
     .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecondsAgo})`)
     .limit(1)
     .single();
+
     if (error || !link) {
       return res.status(404).json({ error: "No links available right now." });
     }
