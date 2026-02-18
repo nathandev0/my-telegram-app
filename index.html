@@ -239,14 +239,15 @@
     let currentLink = null;
     let currentAmount = null;
     let isFlowActive = false;
+    
+    // --- NEW: Global Cooldown Logic ---
+    let globalCooldownUntil = 0; 
+    const SPAM_COOLDOWN = 40000; // 40 seconds in milliseconds
 
-    // We refresh the buttons every 5 seconds so the user sees 
-    // when a link becomes "available" again after a timeout.
+    // Refresh buttons frequently to update countdown text
     setInterval(() => {
-        if (!isFlowActive) {
-            renderButtons(); 
-        }
-    }, 5000); 
+        renderButtons(); 
+    }, 1000); 
 
     async function fetchAvailability() {
       try {
@@ -260,6 +261,19 @@
     }
 
     async function renderButtons() {
+        const now = Date.now();
+        const isOnCooldown = now < globalCooldownUntil;
+        const remainingSeconds = Math.ceil((globalCooldownUntil - now) / 1000);
+
+        // Update status message if on cooldown
+        if (isOnCooldown && !isFlowActive) {
+            statusEl.textContent = `Please wait ${remainingSeconds}s before another request...`;
+            statusEl.style.color = "#ff9500";
+        } else if (!isFlowActive) {
+            statusEl.textContent = "Choose donation amount";
+            statusEl.style.color = "";
+        }
+
         const availability = await fetchAvailability();
         const grid = document.getElementById('buttons');
         grid.innerHTML = '';
@@ -269,9 +283,8 @@
             btn.className = 'donation-btn';
             const availCount = availability[amount] || 0;
 
-            // FIX: Button is only disabled if the Database says 0.
-            // We removed the 'isFlowActive' lock here so other buttons stay clickable.
-            btn.disabled = availCount === 0;
+            // --- FIX: Buttons disable if 0 links OR user is on anti-spam cooldown ---
+            btn.disabled = availCount === 0 || isOnCooldown || isFlowActive;
 
             let counterHTML = '';
             if (availCount > 0) {
@@ -290,7 +303,10 @@
     }
 
     async function reserveAndOpen(amount) {
+      // Set the cooldown immediately on click
+      globalCooldownUntil = Date.now() + SPAM_COOLDOWN;
       isFlowActive = true;
+      
       statusEl.textContent = 'Reserving link...';
 
       try {
@@ -299,7 +315,6 @@
 
         if (!res.ok) {
           tg.showAlert(data.error || 'No available links');
-          statusEl.textContent = '';
           isFlowActive = false;
           renderButtons();
           return;
@@ -307,11 +322,7 @@
 
         currentLink = data.widgetUrl;
         currentAmount = amount;
-
-        statusEl.textContent = `Opening $${amount} payment...`;
         tg.openLink(currentLink);
-
-        // Show the "Did you pay?" card
         confirmCard.classList.add('show');
 
       } catch (e) {
@@ -321,6 +332,8 @@
       }
     }
 
+    // ... (Keep your startCountdown, finishFlow, paidBtn.onclick, and cancelBtn.onclick exactly as they were)
+    
     function startCountdown(el, seconds, onComplete) {
       let remaining = seconds;
       el.textContent = remaining;
@@ -336,8 +349,6 @@
 
     async function finishFlow(success = false) {
       confirmCard.classList.remove('show');
-      statusEl.textContent = '';
-
       if (success) {
         successPage.classList.add('show');
         startCountdown(successTimerEl, 5, () => tg.close());
@@ -345,15 +356,12 @@
         releasedPage.classList.add('show');
         startCountdown(releaseTimerEl, 4, () => tg.close());
       }
-      
-      // Reset flags so the app can be used again immediately
       isFlowActive = false;
       renderButtons();
     }
 
     paidBtn.onclick = async () => {
       if (!currentLink) return;
-      statusEl.textContent = 'Confirming...';
       await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -372,9 +380,8 @@
       finishFlow(false);
     };
 
-    // Initial Load
     renderButtons();
     tg.MainButton.hide();
-  </script>
+</script>
 </body>
 </html>
