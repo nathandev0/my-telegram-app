@@ -223,33 +223,20 @@
     Developed by <a href="https://t.me/nathandev0">@nathandev0</a>
   </footer>
 <script>
+    // 1. SETUP & CONSTANTS
     const tg = window.Telegram.WebApp;
     tg.ready();
     tg.expand();
 
-    // Safety: Fallback if Telegram User ID isn't available
     const userId = (tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user.id : 'guest';
     const COOLDOWN_KEY = `cooldown_${userId}`;
     const COOLDOWN_MS = 40000; 
 
-    // Get Elements
-    const statusEl = document.getElementById('status');
-    const confirmCard = document.getElementById('confirmCard');
-    const successPage = document.getElementById('successPage');
-    const releasedPage = document.getElementById('releasedPage');
-    const paidBtn = document.getElementById('paidBtn');
-    const cancelBtn = document.getElementById('cancelBtn');
-    const successTimerEl = document.getElementById('successTimer');
-    const releaseTimerEl = document.getElementById('releaseTimer');
-
     let currentLink = null;
     let isFlowActive = false;
 
-    // Fast refresh for the timer
-    setInterval(() => {
-        if (!isFlowActive) renderButtons(); 
-    }, 1000);
-
+    // 2. DEFINE FUNCTIONS FIRST (This prevents the "ReferenceError")
+    
     function getRemainingCooldown() {
         try {
             const expiry = localStorage.getItem(COOLDOWN_KEY);
@@ -261,6 +248,7 @@
 
     async function fetchAvailability() {
         try {
+            // Updated with your actual Render URL
             const res = await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve?all=true');
             if (!res.ok) return {};
             const data = await res.json();
@@ -273,24 +261,28 @@
 
     async function renderButtons() {
         const grid = document.getElementById('buttons');
-        if (!grid) return; // Stop if the grid div is missing
+        const statusEl = document.getElementById('status');
+        const confirmCard = document.getElementById('confirmCard');
+        
+        if (!grid) return;
 
         const availability = await fetchAvailability();
         const remaining = getRemainingCooldown();
         const isOnCooldown = remaining > 0;
         const isCardVisible = confirmCard && confirmCard.classList.contains('show');
 
-        // Update Status Text
+        // Handle Status Text
         if (statusEl) {
             if (isOnCooldown && !isFlowActive && !isCardVisible) {
                 statusEl.textContent = `Anti-spam: Wait ${Math.ceil(remaining / 1000)}s`;
                 statusEl.style.color = "#ff9500";
+                statusEl.style.fontWeight = "600";
             } else if (!isFlowActive && !isCardVisible) {
                 statusEl.textContent = "";
             }
         }
 
-        grid.innerHTML = ''; // Clear existing buttons
+        grid.innerHTML = '';
 
         [100, 200, 300, 400, 500, 600, 700, 800].forEach(amount => {
             const btn = document.createElement('button');
@@ -314,12 +306,14 @@
     }
 
     async function reserveAndOpen(amount) {
-        // Set Local Storage Cooldown
-        const expiryTime = Date.now() + COOLDOWN_MS;
-        localStorage.setItem(COOLDOWN_KEY, expiryTime);
+        const statusEl = document.getElementById('status');
+        const confirmCard = document.getElementById('confirmCard');
+
+        // Set persistent cooldown
+        localStorage.setItem(COOLDOWN_KEY, Date.now() + COOLDOWN_MS);
         
         isFlowActive = true;
-        await renderButtons(); // Instant grey-out
+        await renderButtons(); 
         
         if (statusEl) statusEl.textContent = 'Opening payment...';
 
@@ -335,7 +329,7 @@
             }
 
             currentLink = data.widgetUrl;
-            await renderButtons(); // Update counter to 0
+            await renderButtons(); // Update counter
             tg.openLink(currentLink);
             if (confirmCard) confirmCard.classList.add('show');
             
@@ -346,7 +340,6 @@
         }
     }
 
-    // Reuse your existing finishFlow, startCountdown, and button click logic here...
     function startCountdown(el, seconds, onComplete) {
       if(!el) return onComplete();
       let remaining = seconds;
@@ -362,20 +355,29 @@
     }
 
     async function finishFlow(success = false) {
+      const confirmCard = document.getElementById('confirmCard');
+      const statusEl = document.getElementById('status');
+      const successPage = document.getElementById('successPage');
+      const releasedPage = document.getElementById('releasedPage');
+
       if (confirmCard) confirmCard.classList.remove('show');
       if (statusEl) statusEl.textContent = '';
       isFlowActive = false;
 
       if (success) {
         if (successPage) successPage.classList.add('show');
-        startCountdown(successTimerEl, 5, () => tg.close());
+        startCountdown(document.getElementById('successTimer'), 5, () => tg.close());
       } else {
         if (releasedPage) releasedPage.classList.add('show');
-        startCountdown(releaseTimerEl, 4, () => tg.close());
+        startCountdown(document.getElementById('releaseTimer'), 4, () => tg.close());
       }
       renderButtons();
     }
 
+    // 3. INITIALIZE THE APP
+    
+    // Setup button click listeners
+    const paidBtn = document.getElementById('paidBtn');
     if (paidBtn) {
         paidBtn.onclick = async () => {
             if (!currentLink) return;
@@ -388,6 +390,7 @@
         };
     }
 
+    const cancelBtn = document.getElementById('cancelBtn');
     if (cancelBtn) {
         cancelBtn.onclick = async () => {
             if (!currentLink) return;
@@ -400,8 +403,13 @@
         };
     }
 
-    // Start everything
+    // Start the app and the timer
     renderButtons();
+    setInterval(() => {
+        if (!isFlowActive) renderButtons(); 
+    }, 1000);
+
+    tg.MainButton.hide();
 </script>
 </body>
 </html>
