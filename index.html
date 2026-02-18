@@ -304,16 +304,12 @@ async function renderButtons() {
         });
     }
 
-    async function reserveAndOpen(amount) {
-      // STEP 1: DROP THE LOCK IMMEDIATELY
-      // This happens BEFORE the fetch starts.
+async function reserveAndOpen(amount) {
       globalCooldownUntil = Date.now() + SPAM_COOLDOWN;
       isFlowActive = true;
-      
-      // Force an immediate UI update so buttons turn grey instantly
       renderButtons();
 
-      statusEl.textContent = 'Contacting server...';
+      statusEl.textContent = 'Opening payment...'; // This shows until the card pops up
 
       try {
         const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
@@ -321,24 +317,23 @@ async function renderButtons() {
 
         if (!res.ok) {
           tg.showAlert(data.error || 'No links available.');
-          isFlowActive = false; // Unlock flow, but globalCooldownUntil stays active!
+          isFlowActive = false; 
           renderButtons();
           return;
         }
 
         currentLink = data.widgetUrl;
-        statusEl.textContent = 'Link found! Opening...';
-        
         tg.openLink(currentLink);
         
-        // Show the confirmation card
+        // When this card shows, the renderButtons logic above will hide the status text
         confirmCard.classList.add('show');
+        isFlowActive = false; // Set this to false so the statusEl is ready for the cooldown text
       } catch (e) {
-        tg.showAlert('Connection error.');
         isFlowActive = false;
         renderButtons();
       }
     }
+
 
     async function finishFlow(success = false) {
       confirmCard.classList.remove('show');
