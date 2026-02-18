@@ -86,10 +86,10 @@
 
     #status {
       font-size: 15px;
-      color: var(--tg-theme-hint-color, #999999);
       text-align: center;
       min-height: 24px;
-      margin: 8px 0 16px;
+      margin: 16px 0; /* Adds a bit of space around the anti-spam timer */
+      transition: color 0.3s ease;
     }
 
     .confirm-card, .success-page, .released-page {
@@ -253,19 +253,22 @@
       } catch (e) { return {}; }
     }
 
-    async function renderButtons() {
-        const now = Date.now();
-        const isOnCooldown = now < globalCooldownUntil;
-        const remainingSeconds = Math.ceil((globalCooldownUntil - now) / 1000);
+async function renderButtons() {
+    const now = Date.now();
+    const isOnCooldown = now < globalCooldownUntil;
+    const remainingSeconds = Math.ceil((globalCooldownUntil - now) / 1000);
 
-        // 1. UPDATE STATUS TEXT FIRST
-        if (isFlowActive) {
-            // Keep the "Reserving" or "Opening" text if the flow is happening
-        } else if (isOnCooldown) {
-            statusEl.textContent = `Anti-spam active: Wait ${remainingSeconds}s`;
-            statusEl.style.color = "#ff9500";
-            statusEl.style.fontWeight = "600";
-        }
+    // 1. UPDATE STATUS TEXT (Only if on cooldown or flow is active)
+    if (isFlowActive) {
+        // Keep the text set by reserveAndOpen (e.g., "Contacting server...")
+    } else if (isOnCooldown) {
+        statusEl.textContent = `Anti-spam active: Wait ${remainingSeconds}s`;
+        statusEl.style.color = "#ff9500";
+        statusEl.style.fontWeight = "600";
+    } else {
+        // --- FIX: We clear this so it doesn't duplicate the subtitle ---
+        statusEl.textContent = ""; 
+    }
 
         const availability = await fetchAvailability();
         const grid = document.getElementById('buttons');
