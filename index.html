@@ -227,150 +227,181 @@
     tg.ready();
     tg.expand();
 
-    // Get a unique ID for this user from Telegram
-    const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : 'guest';
+    // Safety: Fallback if Telegram User ID isn't available
+    const userId = (tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user.id : 'guest';
     const COOLDOWN_KEY = `cooldown_${userId}`;
-    const COOLDOWN_MS = 40000; // 40 seconds
+    const COOLDOWN_MS = 40000; 
 
+    // Get Elements
     const statusEl = document.getElementById('status');
     const confirmCard = document.getElementById('confirmCard');
-    // ... (keep other element constants)
+    const successPage = document.getElementById('successPage');
+    const releasedPage = document.getElementById('releasedPage');
+    const paidBtn = document.getElementById('paidBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const successTimerEl = document.getElementById('successTimer');
+    const releaseTimerEl = document.getElementById('releaseTimer');
 
     let currentLink = null;
     let isFlowActive = false;
 
-    // Fast refresh to update the UI based on the saved cooldown
+    // Fast refresh for the timer
     setInterval(() => {
-        renderButtons(); 
+        if (!isFlowActive) renderButtons(); 
     }, 1000);
 
     function getRemainingCooldown() {
-        const expiry = localStorage.getItem(COOLDOWN_KEY);
-        if (!expiry) return 0;
-        const remaining = parseInt(expiry) - Date.now();
-        return remaining > 0 ? remaining : 0;
+        try {
+            const expiry = localStorage.getItem(COOLDOWN_KEY);
+            if (!expiry) return 0;
+            const remaining = parseInt(expiry) - Date.now();
+            return remaining > 0 ? remaining : 0;
+        } catch (e) { return 0; }
+    }
+
+    async function fetchAvailability() {
+        try {
+            const res = await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve?all=true');
+            if (!res.ok) return {};
+            const data = await res.json();
+            return data.availability || {};
+        } catch (e) {
+            console.error("Fetch failed:", e);
+            return {};
+        }
     }
 
     async function renderButtons() {
-        const remaining = getRemainingCooldown();
-        const isOnCooldown = remaining > 0;
-
-        // UI Feedback
-        if (isOnCooldown && !isFlowActive && !confirmCard.classList.contains('show')) {
-            statusEl.textContent = `Anti-spam: Wait ${Math.ceil(remaining / 1000)}s`;
-            statusEl.style.color = "#ff9500";
-        } else if (!isFlowActive && !confirmCard.classList.contains('show')) {
-            statusEl.textContent = "";
-        }
+        const grid = document.getElementById('buttons');
+        if (!grid) return; // Stop if the grid div is missing
 
         const availability = await fetchAvailability();
-        const grid = document.getElementById('buttons');
-        grid.innerHTML = '';
+        const remaining = getRemainingCooldown();
+        const isOnCooldown = remaining > 0;
+        const isCardVisible = confirmCard && confirmCard.classList.contains('show');
+
+        // Update Status Text
+        if (statusEl) {
+            if (isOnCooldown && !isFlowActive && !isCardVisible) {
+                statusEl.textContent = `Anti-spam: Wait ${Math.ceil(remaining / 1000)}s`;
+                statusEl.style.color = "#ff9500";
+            } else if (!isFlowActive && !isCardVisible) {
+                statusEl.textContent = "";
+            }
+        }
+
+        grid.innerHTML = ''; // Clear existing buttons
 
         [100, 200, 300, 400, 500, 600, 700, 800].forEach(amount => {
             const btn = document.createElement('button');
             btn.className = 'donation-btn';
+            
             const availCount = availability[amount] || 0;
-
-            // Lock buttons if: No links, current flow is active, OR local cooldown exists
             const isDisabled = availCount === 0 || isFlowActive || isOnCooldown;
             
             btn.disabled = isDisabled;
             if (isDisabled) btn.style.opacity = "0.4";
 
-            btn.innerHTML = `$${amount}${availCount > 0 ? `<span class="counter">${availCount}</span>` : ''}`;
-            btn.onclick = () => !btn.disabled && reserveAndOpen(amount);
+            let counterHTML = availCount > 0 ? `<span class="counter">${availCount}</span>` : '';
+            btn.innerHTML = `$${amount}${counterHTML}`;
+
+            btn.onclick = () => {
+                if (!btn.disabled) reserveAndOpen(amount);
+            };
+
             grid.appendChild(btn);
         });
     }
 
     async function reserveAndOpen(amount) {
-        // SET PERSISTENT COOLDOWN IMMEDIATELY
+        // Set Local Storage Cooldown
         const expiryTime = Date.now() + COOLDOWN_MS;
         localStorage.setItem(COOLDOWN_KEY, expiryTime);
         
         isFlowActive = true;
-        renderButtons();
-        statusEl.textContent = 'Opening payment...';
+        await renderButtons(); // Instant grey-out
+        
+        if (statusEl) statusEl.textContent = 'Opening payment...';
 
         try {
-            const res = await fetch(`https://your-app.onrender.com/api/reserve?amount=${amount}`);
+            const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
             const data = await res.json();
 
             if (!res.ok) {
-                tg.showAlert(data.error);
+                tg.showAlert(data.error || 'No links available');
                 isFlowActive = false;
-                // If failed, we could clear cooldown, but keeping it prevents spamming "fail" requests
                 renderButtons();
                 return;
             }
 
             currentLink = data.widgetUrl;
-            await renderButtons(); // Update counter
+            await renderButtons(); // Update counter to 0
             tg.openLink(currentLink);
-            confirmCard.classList.add('show');
+            if (confirmCard) confirmCard.classList.add('show');
+            
         } catch (e) {
+            tg.showAlert('Connection error.');
             isFlowActive = false;
             renderButtons();
         }
     }
 
-    async function finishFlow(success = false) {
-      // 1. Hide the confirmation question
-      confirmCard.classList.remove('show');
-      statusEl.textContent = '';
-      
-      // NOTE: We do NOT set isFlowActive = false yet. 
-      // This keeps the donation buttons disabled in the background.
-
-      if (success) {
-        successPage.classList.add('show');
-        // Close the app entirely after 5 seconds
-        startCountdown(successTimerEl, 5, () => tg.close());
-      } else {
-        releasedPage.classList.add('show');
-        // Close the app entirely after 5 seconds
-        startCountdown(releaseTimerEl, 5, () => tg.close());
-      }
-      
-      // We don't call renderButtons() here because we want 
-      // the UI to stay "frozen" until the app closes.
+    // Reuse your existing finishFlow, startCountdown, and button click logic here...
+    function startCountdown(el, seconds, onComplete) {
+      if(!el) return onComplete();
+      let remaining = seconds;
+      el.textContent = remaining;
+      const interval = setInterval(() => {
+        remaining--;
+        el.textContent = remaining;
+        if (remaining <= 0) {
+          clearInterval(interval);
+          onComplete();
+        }
+      }, 1000);
     }
 
-paidBtn.onclick = async () => {
-      if (!currentLink) return;
-      
-      // Keep buttons disabled while we tell the server the link is used
-      isFlowActive = true; 
+    async function finishFlow(success = false) {
+      if (confirmCard) confirmCard.classList.remove('show');
+      if (statusEl) statusEl.textContent = '';
+      isFlowActive = false;
+
+      if (success) {
+        if (successPage) successPage.classList.add('show');
+        startCountdown(successTimerEl, 5, () => tg.close());
+      } else {
+        if (releasedPage) releasedPage.classList.add('show');
+        startCountdown(releaseTimerEl, 4, () => tg.close());
+      }
       renderButtons();
+    }
 
-      await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ link: currentLink, action: 'paid' })
-      });
-      
-      finishFlow(true);
-    };
+    if (paidBtn) {
+        paidBtn.onclick = async () => {
+            if (!currentLink) return;
+            await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ link: currentLink, action: 'paid' })
+            });
+            finishFlow(true);
+        };
+    }
 
-    cancelBtn.onclick = async () => {
-      if (!currentLink) return;
+    if (cancelBtn) {
+        cancelBtn.onclick = async () => {
+            if (!currentLink) return;
+            await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ link: currentLink, action: 'cancel' })
+            });
+            finishFlow(false);
+        };
+    }
 
-      // Keep buttons disabled while we tell the server to release the link
-      isFlowActive = true;
-      renderButtons();
-
-      await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ link: currentLink, action: 'cancel' })
-      });
-      
-      finishFlow(false);
-    };
-
+    // Start everything
     renderButtons();
-    tg.MainButton.hide();
 </script>
 </body>
 </html>
