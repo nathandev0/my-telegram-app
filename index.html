@@ -235,11 +235,11 @@
     const cancelBtn = document.getElementById('cancelBtn');
 
     let currentLink = null;
-    let isFlowActive = false;
+    let isFlowActive = false; // Becomes true when a link is being fetched/viewed
     let globalCooldownUntil = 0; 
     const SPAM_COOLDOWN = 40000; // 40 seconds
 
-    // Fast refresh to update the countdown text every second
+    // Update the UI every second to reflect the countdown accurately
     setInterval(() => {
         renderButtons(); 
     }, 1000); 
@@ -258,17 +258,23 @@
         const isOnCooldown = now < globalCooldownUntil;
         const remainingSeconds = Math.ceil((globalCooldownUntil - now) / 1000);
 
-        // UI Feedback: Show the user they are being rate-limited
-        if (isOnCooldown && !isFlowActive) {
+        // 1. UPDATE STATUS TEXT FIRST
+        if (isFlowActive) {
+            // Keep the "Reserving" or "Opening" text if the flow is happening
+        } else if (isOnCooldown) {
             statusEl.textContent = `Anti-spam active: Wait ${remainingSeconds}s`;
             statusEl.style.color = "#ff9500";
-        } else if (!isFlowActive) {
+            statusEl.style.fontWeight = "600";
+        } else {
             statusEl.textContent = "Choose donation amount";
             statusEl.style.color = "";
+            statusEl.style.fontWeight = "400";
         }
 
         const availability = await fetchAvailability();
         const grid = document.getElementById('buttons');
+        
+        // Clear and rebuild buttons
         grid.innerHTML = '';
 
         [100, 200, 300, 400, 500, 600, 700, 800].forEach(amount => {
@@ -276,14 +282,14 @@
             btn.className = 'donation-btn';
             const availCount = availability[amount] || 0;
 
-            // --- THE MASTER LOCK ---
-            // A button is disabled if:
-            // 1. Database says 0 links
-            // 2. You just clicked something (isFlowActive)
-            // 3. You are in the 40-second spam window (isOnCooldown)
-            if (availCount === 0 || isFlowActive || isOnCooldown) {
-                btn.disabled = true;
-                btn.style.opacity = "0.4"; // Visual feedback
+            // --- THE INSTANT LOCK LOGIC ---
+            // If the user is on cooldown OR currently in a flow, all buttons are dead.
+            const shouldBeDisabled = availCount === 0 || isOnCooldown || isFlowActive;
+
+            btn.disabled = shouldBeDisabled;
+            if (shouldBeDisabled) {
+                btn.style.opacity = "0.4";
+                btn.style.filter = "grayscale(100%)";
             }
 
             let counterHTML = availCount > 0 ? `<span class="counter">${availCount}</span>` : '';
@@ -298,38 +304,45 @@
     }
 
     async function reserveAndOpen(amount) {
-      // 1. IMMEDIATELY set the locks
-      isFlowActive = true;
+      // STEP 1: DROP THE LOCK IMMEDIATELY
+      // This happens BEFORE the fetch starts.
       globalCooldownUntil = Date.now() + SPAM_COOLDOWN;
+      isFlowActive = true;
       
-      // 2. Refresh UI so buttons turn grey instantly
+      // Force an immediate UI update so buttons turn grey instantly
       renderButtons();
 
-      statusEl.textContent = 'Reserving...';
+      statusEl.textContent = 'Contacting server...';
 
       try {
         const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
         const data = await res.json();
 
         if (!res.ok) {
-          tg.showAlert(data.error || 'Links exhausted');
-          isFlowActive = false;
+          tg.showAlert(data.error || 'No links available.');
+          isFlowActive = false; // Unlock flow, but globalCooldownUntil stays active!
           renderButtons();
           return;
         }
 
         currentLink = data.widgetUrl;
+        statusEl.textContent = 'Link found! Opening...';
+        
         tg.openLink(currentLink);
+        
+        // Show the confirmation card
         confirmCard.classList.add('show');
       } catch (e) {
+        tg.showAlert('Connection error.');
         isFlowActive = false;
         renderButtons();
       }
     }
 
-    // --- HELPER FUNCTIONS ---
     function finishFlow(success = false) {
       confirmCard.classList.remove('show');
+      isFlowActive = false; // Allow the timer to show "Anti-spam active" instead of "Opening..."
+      
       if (success) {
         successPage.classList.add('show');
         setTimeout(() => tg.close(), 5000);
@@ -337,11 +350,11 @@
         releasedPage.classList.add('show');
         setTimeout(() => tg.close(), 4000);
       }
-      isFlowActive = false;
       renderButtons();
     }
 
     paidBtn.onclick = async () => {
+      if (!currentLink) return;
       await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -351,6 +364,7 @@
     };
 
     cancelBtn.onclick = async () => {
+      if (!currentLink) return;
       await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -359,6 +373,7 @@
       finishFlow(false);
     };
 
+    // Initial render
     renderButtons();
 </script>
 </body>
