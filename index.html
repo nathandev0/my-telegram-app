@@ -324,37 +324,56 @@
     }
 
     async function finishFlow(success = false) {
+      // 1. Hide the confirmation question
       confirmCard.classList.remove('show');
       statusEl.textContent = '';
-      isFlowActive = false;
+      
+      // NOTE: We do NOT set isFlowActive = false yet. 
+      // This keeps the donation buttons disabled in the background.
 
       if (success) {
         successPage.classList.add('show');
+        // Close the app entirely after 5 seconds
         startCountdown(successTimerEl, 5, () => tg.close());
       } else {
         releasedPage.classList.add('show');
-        startCountdown(releaseTimerEl, 4, () => tg.close());
+        // Close the app entirely after 5 seconds
+        startCountdown(releaseTimerEl, 5, () => tg.close());
       }
-      renderButtons();
+      
+      // We don't call renderButtons() here because we want 
+      // the UI to stay "frozen" until the app closes.
     }
 
-    paidBtn.onclick = async () => {
+paidBtn.onclick = async () => {
       if (!currentLink) return;
+      
+      // Keep buttons disabled while we tell the server the link is used
+      isFlowActive = true; 
+      renderButtons();
+
       await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ link: currentLink, action: 'paid' })
       });
+      
       finishFlow(true);
     };
 
     cancelBtn.onclick = async () => {
       if (!currentLink) return;
+
+      // Keep buttons disabled while we tell the server to release the link
+      isFlowActive = true;
+      renderButtons();
+
       await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ link: currentLink, action: 'cancel' })
       });
+      
       finishFlow(false);
     };
 
