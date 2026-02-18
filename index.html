@@ -377,32 +377,51 @@
     }
 
     function startCountdown(el, seconds, onComplete) {
-      if(!el) return onComplete();
-      let remaining = seconds;
-      el.textContent = remaining;
-      const interval = setInterval(() => {
-        renderButtons(); // This will now handle the logic correctly based on the flag
-      }, 1000);
+        if(!el) {
+            if(onComplete) onComplete();
+            return;
+        }
+        let remaining = seconds;
+        el.textContent = remaining;
+        const interval = setInterval(() => {
+            remaining--;
+            el.textContent = remaining;
+            if (remaining <= 0) {
+                clearInterval(interval);
+                if(onComplete) onComplete(); // This triggers the tg.close()
+            }
+        }, 1000);
     }
 
     async function finishFlow(success = false) {
-      const confirmCard = document.getElementById('confirmCard');
-      const statusEl = document.getElementById('status');
-      const successPage = document.getElementById('successPage');
-      const releasedPage = document.getElementById('releasedPage');
+        const confirmCard = document.getElementById('confirmCard');
+        const statusEl = document.getElementById('status');
+        const successPage = document.getElementById('successPage');
+        const releasedPage = document.getElementById('releasedPage');
 
-      if (confirmCard) confirmCard.classList.remove('show');
-      if (statusEl) statusEl.textContent = '';
-      isFlowActive = false;
+        if (confirmCard) confirmCard.classList.add('hide'); // Smoothly hide the card
+        confirmCard.classList.remove('show');
+        
+        if (statusEl) statusEl.textContent = '';
+        
+        // Note: We keep isFlowActive = true so background buttons stay disabled
+        isFlowActive = true; 
 
-      if (success) {
-        if (successPage) successPage.classList.add('show');
-        startCountdown(document.getElementById('successTimer'), 5, () => tg.close());
-      } else {
-        if (releasedPage) releasedPage.classList.add('show');
-        startCountdown(document.getElementById('releaseTimer'), 4, () => tg.close());
-      }
-      renderButtons();
+        if (success) {
+            if (successPage) successPage.classList.add('show');
+            // Start 5-second countdown then CLOSE the app
+            startCountdown(document.getElementById('successTimer'), 5, () => {
+                console.log("Closing app...");
+                tg.close(); // This is the line that was missing!
+            });
+        } else {
+            if (releasedPage) releasedPage.classList.add('show');
+            // Start 4-second countdown then CLOSE the app
+            startCountdown(document.getElementById('releaseTimer'), 4, () => {
+                console.log("Closing app...");
+                tg.close(); // This is the line that was missing!
+            });
+        }
     }
 
     // 3. INITIALIZE THE APP
