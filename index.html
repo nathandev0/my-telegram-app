@@ -265,10 +265,6 @@
             statusEl.textContent = `Anti-spam active: Wait ${remainingSeconds}s`;
             statusEl.style.color = "#ff9500";
             statusEl.style.fontWeight = "600";
-        } else {
-            statusEl.textContent = "Choose donation amount";
-            statusEl.style.color = "";
-            statusEl.style.fontWeight = "400";
         }
 
         const availability = await fetchAvailability();
