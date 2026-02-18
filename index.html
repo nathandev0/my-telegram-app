@@ -248,7 +248,7 @@
 
     async function fetchAvailability() {
       try {
-        const res = await fetch('/api/reserve?all=true');
+        const res = await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve?all=true');
         if (!res.ok) return {};
         const data = await res.json();
         return data.availability || {};
@@ -301,7 +301,7 @@
       statusEl.textContent = 'Reserving link...';
 
       try {
-        const res = await fetch(`/api/reserve?amount=${amount}`);
+        const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
         const data = await res.json();
 
         if (!res.ok) {
@@ -364,7 +364,7 @@
 
     paidBtn.onclick = async () => {
       if (!currentLink) return;
-      await fetch('/api/reserve', {
+      await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ link: currentLink, action: 'paid' })
@@ -382,7 +382,7 @@
 
     cancelBtn.onclick = async () => {
       if (!currentLink) return;
-      await fetch('/api/reserve', {
+      await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ link: currentLink, action: 'cancel' })
