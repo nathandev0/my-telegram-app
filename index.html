@@ -233,16 +233,18 @@
     const releasedPage = document.getElementById('releasedPage');
     const paidBtn = document.getElementById('paidBtn');
     const cancelBtn = document.getElementById('cancelBtn');
+    const successTimerEl = document.getElementById('successTimer');
+    const releaseTimerEl = document.getElementById('releaseTimer');
 
     let currentLink = null;
-    let isFlowActive = false; // Becomes true when a link is being fetched/viewed
-    let globalCooldownUntil = 0; 
-    const SPAM_COOLDOWN = 40000; // 40 seconds
+    let isFlowActive = false;
 
-    // Update the UI every second to reflect the countdown accurately
+    // Refresh availability every 5 seconds to keep counts accurate
     setInterval(() => {
-        renderButtons(); 
-    }, 1000); 
+        if (!isFlowActive) {
+            renderButtons(); 
+        }
+    }, 5000); 
 
     async function fetchAvailability() {
       try {
@@ -250,32 +252,12 @@
         if (!res.ok) return {};
         const data = await res.json();
         return data.availability || {};
-      } catch (e) { return {}; }
+      } catch (e) {
+        return {};
+      }
     }
 
-async function renderButtons() {
-        const now = Date.now();
-        const isOnCooldown = now < globalCooldownUntil;
-        const remainingSeconds = Math.ceil((globalCooldownUntil - now) / 1000);
-
-        // 1. UPDATE STATUS TEXT LOGIC
-        // We only show the anti-spam message if:
-        // - The user is on cooldown
-        // - AND we aren't currently "Reserving..." (isFlowActive)
-        // - AND the confirmation card is NOT visible
-        const isCardVisible = confirmCard.classList.contains('show');
-
-        if (isFlowActive) {
-            // Let reserveAndOpen handle the text (e.g., "Contacting server...")
-        } else if (isOnCooldown && !isCardVisible) {
-            statusEl.textContent = `Anti-spam active: Wait ${remainingSeconds}s`;
-            statusEl.style.color = "#ff9500";
-            statusEl.style.fontWeight = "600";
-        } else {
-            // Clear the text so it doesn't conflict with the Confirmation Card or Subtitle
-            statusEl.textContent = ""; 
-        }
-
+    async function renderButtons() {
         const availability = await fetchAvailability();
         const grid = document.getElementById('buttons');
         grid.innerHTML = '';
@@ -285,13 +267,8 @@ async function renderButtons() {
             btn.className = 'donation-btn';
             const availCount = availability[amount] || 0;
 
-            // Buttons stay disabled during cooldown or active flow
-            const shouldBeDisabled = availCount === 0 || isOnCooldown || isFlowActive;
-            btn.disabled = shouldBeDisabled;
-            
-            if (shouldBeDisabled) {
-                btn.style.opacity = "0.4";
-            }
+            // Buttons are only disabled if links are 0 or during the "Reserving" process
+            btn.disabled = availCount === 0 || isFlowActive;
 
             let counterHTML = availCount > 0 ? `<span class="counter">${availCount}</span>` : '';
             btn.innerHTML = `$${amount}${counterHTML}`;
@@ -304,48 +281,59 @@ async function renderButtons() {
         });
     }
 
-async function reserveAndOpen(amount) {
-      globalCooldownUntil = Date.now() + SPAM_COOLDOWN;
+    async function reserveAndOpen(amount) {
       isFlowActive = true;
       renderButtons();
-
-      statusEl.textContent = 'Opening payment...'; // This shows until the card pops up
+      statusEl.textContent = 'Opening payment...';
 
       try {
         const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
         const data = await res.json();
 
         if (!res.ok) {
-          tg.showAlert(data.error || 'No links available.');
-          isFlowActive = false; 
+          tg.showAlert(data.error || 'No available links');
+          isFlowActive = false;
+          statusEl.textContent = '';
           renderButtons();
           return;
         }
 
         currentLink = data.widgetUrl;
         tg.openLink(currentLink);
-        
-        // When this card shows, the renderButtons logic above will hide the status text
         confirmCard.classList.add('show');
-        isFlowActive = false; // Set this to false so the statusEl is ready for the cooldown text
+        // We leave isFlowActive as true while the card is shown to keep buttons locked
       } catch (e) {
+        tg.showAlert('Network error.');
         isFlowActive = false;
+        statusEl.textContent = '';
         renderButtons();
       }
     }
 
+    function startCountdown(el, seconds, onComplete) {
+      let remaining = seconds;
+      el.textContent = remaining;
+      const interval = setInterval(() => {
+        remaining--;
+        el.textContent = remaining;
+        if (remaining <= 0) {
+          clearInterval(interval);
+          onComplete();
+        }
+      }, 1000);
+    }
 
     async function finishFlow(success = false) {
       confirmCard.classList.remove('show');
-      isFlowActive = false; 
-      statusEl.textContent = ""; // Clear "Opening..." text immediately
+      statusEl.textContent = '';
+      isFlowActive = false;
 
       if (success) {
         successPage.classList.add('show');
-        setTimeout(() => tg.close(), 5000);
+        startCountdown(successTimerEl, 5, () => tg.close());
       } else {
         releasedPage.classList.add('show');
-        setTimeout(() => tg.close(), 4000);
+        startCountdown(releaseTimerEl, 4, () => tg.close());
       }
       renderButtons();
     }
@@ -370,8 +358,8 @@ async function reserveAndOpen(amount) {
       finishFlow(false);
     };
 
-    // Initial render
     renderButtons();
+    tg.MainButton.hide();
 </script>
 </body>
 </html>
