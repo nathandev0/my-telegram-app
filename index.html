@@ -233,18 +233,13 @@
     const releasedPage = document.getElementById('releasedPage');
     const paidBtn = document.getElementById('paidBtn');
     const cancelBtn = document.getElementById('cancelBtn');
-    const successTimerEl = document.getElementById('successTimer');
-    const releaseTimerEl = document.getElementById('releaseTimer');
 
     let currentLink = null;
-    let currentAmount = null;
     let isFlowActive = false;
-    
-    // --- NEW: Global Cooldown Logic ---
     let globalCooldownUntil = 0; 
-    const SPAM_COOLDOWN = 40000; // 40 seconds in milliseconds
+    const SPAM_COOLDOWN = 40000; // 40 seconds
 
-    // Refresh buttons frequently to update countdown text
+    // Fast refresh to update the countdown text every second
     setInterval(() => {
         renderButtons(); 
     }, 1000); 
@@ -255,9 +250,7 @@
         if (!res.ok) return {};
         const data = await res.json();
         return data.availability || {};
-      } catch (e) {
-        return {};
-      }
+      } catch (e) { return {}; }
     }
 
     async function renderButtons() {
@@ -265,9 +258,9 @@
         const isOnCooldown = now < globalCooldownUntil;
         const remainingSeconds = Math.ceil((globalCooldownUntil - now) / 1000);
 
-        // Update status message if on cooldown
+        // UI Feedback: Show the user they are being rate-limited
         if (isOnCooldown && !isFlowActive) {
-            statusEl.textContent = `Please wait ${remainingSeconds}s before another request...`;
+            statusEl.textContent = `Anti-spam active: Wait ${remainingSeconds}s`;
             statusEl.style.color = "#ff9500";
         } else if (!isFlowActive) {
             statusEl.textContent = "Choose donation amount";
@@ -283,85 +276,72 @@
             btn.className = 'donation-btn';
             const availCount = availability[amount] || 0;
 
-            // --- FIX: Buttons disable if 0 links OR user is on anti-spam cooldown ---
-            btn.disabled = availCount === 0 || isOnCooldown || isFlowActive;
-
-            let counterHTML = '';
-            if (availCount > 0) {
-                counterHTML = `<span class="counter">${availCount}</span>`;
+            // --- THE MASTER LOCK ---
+            // A button is disabled if:
+            // 1. Database says 0 links
+            // 2. You just clicked something (isFlowActive)
+            // 3. You are in the 40-second spam window (isOnCooldown)
+            if (availCount === 0 || isFlowActive || isOnCooldown) {
+                btn.disabled = true;
+                btn.style.opacity = "0.4"; // Visual feedback
             }
 
+            let counterHTML = availCount > 0 ? `<span class="counter">${availCount}</span>` : '';
             btn.innerHTML = `$${amount}${counterHTML}`;
 
-            btn.addEventListener('click', () => {
-                if (btn.disabled) return;
-                reserveAndOpen(amount);
-            });
+            btn.onclick = () => {
+                if (!btn.disabled) reserveAndOpen(amount);
+            };
 
             grid.appendChild(btn);
         });
     }
 
     async function reserveAndOpen(amount) {
-      // Set the cooldown immediately on click
-      globalCooldownUntil = Date.now() + SPAM_COOLDOWN;
+      // 1. IMMEDIATELY set the locks
       isFlowActive = true;
+      globalCooldownUntil = Date.now() + SPAM_COOLDOWN;
       
-      statusEl.textContent = 'Reserving link...';
+      // 2. Refresh UI so buttons turn grey instantly
+      renderButtons();
+
+      statusEl.textContent = 'Reserving...';
 
       try {
         const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
         const data = await res.json();
 
         if (!res.ok) {
-          tg.showAlert(data.error || 'No available links');
+          tg.showAlert(data.error || 'Links exhausted');
           isFlowActive = false;
           renderButtons();
           return;
         }
 
         currentLink = data.widgetUrl;
-        currentAmount = amount;
         tg.openLink(currentLink);
         confirmCard.classList.add('show');
-
       } catch (e) {
-        tg.showAlert('Network error.');
         isFlowActive = false;
         renderButtons();
       }
     }
 
-    // ... (Keep your startCountdown, finishFlow, paidBtn.onclick, and cancelBtn.onclick exactly as they were)
-    
-    function startCountdown(el, seconds, onComplete) {
-      let remaining = seconds;
-      el.textContent = remaining;
-      const interval = setInterval(() => {
-        remaining--;
-        el.textContent = remaining;
-        if (remaining <= 0) {
-          clearInterval(interval);
-          onComplete();
-        }
-      }, 1000);
-    }
-
-    async function finishFlow(success = false) {
+    // --- HELPER FUNCTIONS ---
+    function finishFlow(success = false) {
       confirmCard.classList.remove('show');
       if (success) {
         successPage.classList.add('show');
-        startCountdown(successTimerEl, 5, () => tg.close());
+        setTimeout(() => tg.close(), 5000);
       } else {
         releasedPage.classList.add('show');
-        startCountdown(releaseTimerEl, 4, () => tg.close());
+        setTimeout(() => tg.close(), 4000);
       }
       isFlowActive = false;
       renderButtons();
     }
 
     paidBtn.onclick = async () => {
-      if (!currentLink) return;
       await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -371,7 +351,6 @@
     };
 
     cancelBtn.onclick = async () => {
-      if (!currentLink) return;
       await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -381,7 +360,6 @@
     };
 
     renderButtons();
-    tg.MainButton.hide();
 </script>
 </body>
 </html>
