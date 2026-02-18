@@ -244,7 +244,8 @@
 
     const userId = (tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user.id : 'guest';
     const COOLDOWN_KEY = `cooldown_${userId}`;
-    const COOLDOWN_MS = 40000; 
+    const COOLDOWN_MS = 40000;
+    let isInitialLoad = true; // This tracks if the app was just opened 
 
     let currentLink = null;
     let isFlowActive = false;
@@ -280,7 +281,7 @@
         
         if (!grid) return;
 
-        // --- NEW: Show skeleton buttons while waiting for the server ---
+        // Show skeletons if first time
         if (grid.innerHTML === '') {
             for (let i = 0; i < 8; i++) {
                 const skeleton = document.createElement('div');
@@ -294,41 +295,53 @@
         const isOnCooldown = remaining > 0;
         const isCardVisible = confirmCard && confirmCard.classList.contains('show');
 
-        // Handle Status Text
+        // --- UPDATED LOGIC: Only show text on re-entry ---
         if (statusEl) {
-            if (isOnCooldown && !isFlowActive && !isCardVisible) {
-                statusEl.textContent = `Anti-spam: Wait ${Math.ceil(remaining / 1000)}s`;
+            // Show text ONLY if on cooldown AND it's the initial load (freshly opened)
+            if (isOnCooldown && isInitialLoad && !isCardVisible) {
+                statusEl.textContent = `Anti-spam active: Wait ${Math.ceil(remaining / 1000)}s`;
                 statusEl.style.color = "#ff9500";
-            } else if (!isFlowActive && !isCardVisible) {
+                statusEl.style.fontWeight = "600";
+            } 
+            // Hide text if the flow is active or if the user is already interacting
+            else if (isFlowActive || isCardVisible || !isOnCooldown) {
                 statusEl.textContent = "";
             }
         }
 
-        // Clear skeletons and draw real buttons
-        grid.innerHTML = '';
+        grid.innerHTML = ''; // Clear and draw buttons
 
         [100, 200, 300, 400, 500, 600, 700, 800].forEach(amount => {
             const btn = document.createElement('button');
             btn.className = 'donation-btn';
-            
             const availCount = availability[amount] || 0;
             const isDisabled = availCount === 0 || isFlowActive || isOnCooldown;
             
             btn.disabled = isDisabled;
             if (isDisabled) btn.style.opacity = "0.4";
 
-            let counterHTML = availCount > 0 ? `<span class="counter">${availCount}</span>` : '';
-            btn.innerHTML = `$${amount}${counterHTML}`;
-
+            btn.innerHTML = `$${amount}${availCount > 0 ? `<span class="counter">${availCount}</span>` : ''}`;
             btn.onclick = () => {
+                isInitialLoad = false; // The user interacted, so it's no longer the "initial load"
                 if (!btn.disabled) reserveAndOpen(amount);
             };
-
             grid.appendChild(btn);
         });
+
+        // After the first render finishes, we mark the initial load as done
+        // But we only do this if NOT on cooldown, so if they ARE on cooldown, 
+        // the text stays visible until the timer hits 0.
+        if (!isOnCooldown) {
+            isInitialLoad = false;
+        }
     }
 
     async function reserveAndOpen(amount) {
+        isInitialLoad = false; // Ensure text stays hidden during this session
+        localStorage.setItem(COOLDOWN_KEY, Date.now() + COOLDOWN_MS);
+        
+        isFlowActive = true;
+        await renderButtons();
         const statusEl = document.getElementById('status');
         const confirmCard = document.getElementById('confirmCard');
 
@@ -368,12 +381,7 @@
       let remaining = seconds;
       el.textContent = remaining;
       const interval = setInterval(() => {
-        remaining--;
-        el.textContent = remaining;
-        if (remaining <= 0) {
-          clearInterval(interval);
-          onComplete();
-        }
+        renderButtons(); // This will now handle the logic correctly based on the flag
       }, 1000);
     }
 
