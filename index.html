@@ -178,6 +178,20 @@
       text-decoration: none;
       font-weight: 500;
     }
+
+    .skeleton-btn {
+      height: 54px;
+      background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+      border-radius: 12px;
+      border: none;
+      animation: pulse 1.5s infinite ease-in-out;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
   </style>
 </head>
 <body>
@@ -266,6 +280,15 @@
         
         if (!grid) return;
 
+        // --- NEW: Show skeleton buttons while waiting for the server ---
+        if (grid.innerHTML === '') {
+            for (let i = 0; i < 8; i++) {
+                const skeleton = document.createElement('div');
+                skeleton.className = 'skeleton-btn';
+                grid.appendChild(skeleton);
+            }
+        }
+
         const availability = await fetchAvailability();
         const remaining = getRemainingCooldown();
         const isOnCooldown = remaining > 0;
@@ -276,12 +299,12 @@
             if (isOnCooldown && !isFlowActive && !isCardVisible) {
                 statusEl.textContent = `Anti-spam: Wait ${Math.ceil(remaining / 1000)}s`;
                 statusEl.style.color = "#ff9500";
-                statusEl.style.fontWeight = "600";
             } else if (!isFlowActive && !isCardVisible) {
                 statusEl.textContent = "";
             }
         }
 
+        // Clear skeletons and draw real buttons
         grid.innerHTML = '';
 
         [100, 200, 300, 400, 500, 600, 700, 800].forEach(amount => {
