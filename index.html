@@ -260,6 +260,7 @@
     async function renderButtons() {
         const availability = await fetchAvailability();
         const grid = document.getElementById('buttons');
+        if (!grid) return;
         grid.innerHTML = '';
 
         [100, 200, 300, 400, 500, 600, 700, 800].forEach(amount => {
@@ -282,8 +283,10 @@
     }
 
     async function reserveAndOpen(amount) {
-      isFlowActive = true;
-      renderButtons();
+      isFlowActive = true; 
+      // 1. First render: Disables buttons immediately so they can't be clicked twice
+      renderButtons(); 
+      
       statusEl.textContent = 'Opening payment...';
 
       try {
@@ -292,16 +295,22 @@
 
         if (!res.ok) {
           tg.showAlert(data.error || 'No available links');
-          isFlowActive = false;
+          isFlowActive = false; 
           statusEl.textContent = '';
           renderButtons();
           return;
         }
 
         currentLink = data.widgetUrl;
+
+        // 2. Second render: Now that the DB has updated the link to 'reserved',
+        // we fetch the counts again so the [1] changes to [0] (and disappears) 
+        // before the payment link even opens.
+        await renderButtons(); 
+
         tg.openLink(currentLink);
         confirmCard.classList.add('show');
-        // We leave isFlowActive as true while the card is shown to keep buttons locked
+        
       } catch (e) {
         tg.showAlert('Network error.');
         isFlowActive = false;
