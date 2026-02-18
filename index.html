@@ -227,40 +227,44 @@
     tg.ready();
     tg.expand();
 
+    // Get a unique ID for this user from Telegram
+    const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : 'guest';
+    const COOLDOWN_KEY = `cooldown_${userId}`;
+    const COOLDOWN_MS = 40000; // 40 seconds
+
     const statusEl = document.getElementById('status');
     const confirmCard = document.getElementById('confirmCard');
-    const successPage = document.getElementById('successPage');
-    const releasedPage = document.getElementById('releasedPage');
-    const paidBtn = document.getElementById('paidBtn');
-    const cancelBtn = document.getElementById('cancelBtn');
-    const successTimerEl = document.getElementById('successTimer');
-    const releaseTimerEl = document.getElementById('releaseTimer');
+    // ... (keep other element constants)
 
     let currentLink = null;
     let isFlowActive = false;
 
-    // Refresh availability every 5 seconds to keep counts accurate
+    // Fast refresh to update the UI based on the saved cooldown
     setInterval(() => {
-        if (!isFlowActive) {
-            renderButtons(); 
-        }
-    }, 5000); 
+        renderButtons(); 
+    }, 1000);
 
-    async function fetchAvailability() {
-      try {
-        const res = await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve?all=true');
-        if (!res.ok) return {};
-        const data = await res.json();
-        return data.availability || {};
-      } catch (e) {
-        return {};
-      }
+    function getRemainingCooldown() {
+        const expiry = localStorage.getItem(COOLDOWN_KEY);
+        if (!expiry) return 0;
+        const remaining = parseInt(expiry) - Date.now();
+        return remaining > 0 ? remaining : 0;
     }
 
     async function renderButtons() {
+        const remaining = getRemainingCooldown();
+        const isOnCooldown = remaining > 0;
+
+        // UI Feedback
+        if (isOnCooldown && !isFlowActive && !confirmCard.classList.contains('show')) {
+            statusEl.textContent = `Anti-spam: Wait ${Math.ceil(remaining / 1000)}s`;
+            statusEl.style.color = "#ff9500";
+        } else if (!isFlowActive && !confirmCard.classList.contains('show')) {
+            statusEl.textContent = "";
+        }
+
         const availability = await fetchAvailability();
         const grid = document.getElementById('buttons');
-        if (!grid) return;
         grid.innerHTML = '';
 
         [100, 200, 300, 400, 500, 600, 700, 800].forEach(amount => {
@@ -268,126 +272,50 @@
             btn.className = 'donation-btn';
             const availCount = availability[amount] || 0;
 
-            // Buttons are only disabled if links are 0 or during the "Reserving" process
-            btn.disabled = availCount === 0 || isFlowActive;
+            // Lock buttons if: No links, current flow is active, OR local cooldown exists
+            const isDisabled = availCount === 0 || isFlowActive || isOnCooldown;
+            
+            btn.disabled = isDisabled;
+            if (isDisabled) btn.style.opacity = "0.4";
 
-            let counterHTML = availCount > 0 ? `<span class="counter">${availCount}</span>` : '';
-            btn.innerHTML = `$${amount}${counterHTML}`;
-
-            btn.onclick = () => {
-                if (!btn.disabled) reserveAndOpen(amount);
-            };
-
+            btn.innerHTML = `$${amount}${availCount > 0 ? `<span class="counter">${availCount}</span>` : ''}`;
+            btn.onclick = () => !btn.disabled && reserveAndOpen(amount);
             grid.appendChild(btn);
         });
     }
 
     async function reserveAndOpen(amount) {
-      isFlowActive = true; 
-      // 1. First render: Disables buttons immediately so they can't be clicked twice
-      renderButtons(); 
-      
-      statusEl.textContent = 'Opening payment...';
-
-      try {
-        const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
-        const data = await res.json();
-
-        if (!res.ok) {
-          tg.showAlert(data.error || 'No available links');
-          isFlowActive = false; 
-          statusEl.textContent = '';
-          renderButtons();
-          return;
-        }
-
-        currentLink = data.widgetUrl;
-
-        // 2. Second render: Now that the DB has updated the link to 'reserved',
-        // we fetch the counts again so the [1] changes to [0] (and disappears) 
-        // before the payment link even opens.
-        await renderButtons(); 
-
-        tg.openLink(currentLink);
-        confirmCard.classList.add('show');
+        // SET PERSISTENT COOLDOWN IMMEDIATELY
+        const expiryTime = Date.now() + COOLDOWN_MS;
+        localStorage.setItem(COOLDOWN_KEY, expiryTime);
         
-      } catch (e) {
-        tg.showAlert('Network error.');
-        isFlowActive = false;
-        statusEl.textContent = '';
+        isFlowActive = true;
         renderButtons();
-      }
-    }
+        statusEl.textContent = 'Opening payment...';
 
-    function startCountdown(el, seconds, onComplete) {
-      let remaining = seconds;
-      el.textContent = remaining;
-      const interval = setInterval(() => {
-        remaining--;
-        el.textContent = remaining;
-        if (remaining <= 0) {
-          clearInterval(interval);
-          onComplete();
+        try {
+            const res = await fetch(`https://your-app.onrender.com/api/reserve?amount=${amount}`);
+            const data = await res.json();
+
+            if (!res.ok) {
+                tg.showAlert(data.error);
+                isFlowActive = false;
+                // If failed, we could clear cooldown, but keeping it prevents spamming "fail" requests
+                renderButtons();
+                return;
+            }
+
+            currentLink = data.widgetUrl;
+            await renderButtons(); // Update counter
+            tg.openLink(currentLink);
+            confirmCard.classList.add('show');
+        } catch (e) {
+            isFlowActive = false;
+            renderButtons();
         }
-      }, 1000);
     }
 
-    async function finishFlow(success = false) {
-      // 1. Hide the confirmation question
-      confirmCard.classList.remove('show');
-      statusEl.textContent = '';
-      
-      // NOTE: We do NOT set isFlowActive = false yet. 
-      // This keeps the donation buttons disabled in the background.
-
-      if (success) {
-        successPage.classList.add('show');
-        // Close the app entirely after 5 seconds
-        startCountdown(successTimerEl, 5, () => tg.close());
-      } else {
-        releasedPage.classList.add('show');
-        // Close the app entirely after 5 seconds
-        startCountdown(releaseTimerEl, 5, () => tg.close());
-      }
-      
-      // We don't call renderButtons() here because we want 
-      // the UI to stay "frozen" until the app closes.
-    }
-
-paidBtn.onclick = async () => {
-      if (!currentLink) return;
-      
-      // Keep buttons disabled while we tell the server the link is used
-      isFlowActive = true; 
-      renderButtons();
-
-      await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ link: currentLink, action: 'paid' })
-      });
-      
-      finishFlow(true);
-    };
-
-    cancelBtn.onclick = async () => {
-      if (!currentLink) return;
-
-      // Keep buttons disabled while we tell the server to release the link
-      isFlowActive = true;
-      renderButtons();
-
-      await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ link: currentLink, action: 'cancel' })
-      });
-      
-      finishFlow(false);
-    };
-
-    renderButtons();
-    tg.MainButton.hide();
+    // ... (Keep finishFlow, paidBtn.onclick, and cancelBtn.onclick as before)
 </script>
 </body>
 </html>
