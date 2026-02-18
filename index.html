@@ -254,26 +254,30 @@
     }
 
 async function renderButtons() {
-    const now = Date.now();
-    const isOnCooldown = now < globalCooldownUntil;
-    const remainingSeconds = Math.ceil((globalCooldownUntil - now) / 1000);
+        const now = Date.now();
+        const isOnCooldown = now < globalCooldownUntil;
+        const remainingSeconds = Math.ceil((globalCooldownUntil - now) / 1000);
 
-    // 1. UPDATE STATUS TEXT (Only if on cooldown or flow is active)
-    if (isFlowActive) {
-        // Keep the text set by reserveAndOpen (e.g., "Contacting server...")
-    } else if (isOnCooldown) {
-        statusEl.textContent = `Anti-spam active: Wait ${remainingSeconds}s`;
-        statusEl.style.color = "#ff9500";
-        statusEl.style.fontWeight = "600";
-    } else {
-        // --- FIX: We clear this so it doesn't duplicate the subtitle ---
-        statusEl.textContent = ""; 
-    }
+        // 1. UPDATE STATUS TEXT LOGIC
+        // We only show the anti-spam message if:
+        // - The user is on cooldown
+        // - AND we aren't currently "Reserving..." (isFlowActive)
+        // - AND the confirmation card is NOT visible
+        const isCardVisible = confirmCard.classList.contains('show');
+
+        if (isFlowActive) {
+            // Let reserveAndOpen handle the text (e.g., "Contacting server...")
+        } else if (isOnCooldown && !isCardVisible) {
+            statusEl.textContent = `Anti-spam active: Wait ${remainingSeconds}s`;
+            statusEl.style.color = "#ff9500";
+            statusEl.style.fontWeight = "600";
+        } else {
+            // Clear the text so it doesn't conflict with the Confirmation Card or Subtitle
+            statusEl.textContent = ""; 
+        }
 
         const availability = await fetchAvailability();
         const grid = document.getElementById('buttons');
-        
-        // Clear and rebuild buttons
         grid.innerHTML = '';
 
         [100, 200, 300, 400, 500, 600, 700, 800].forEach(amount => {
@@ -281,14 +285,12 @@ async function renderButtons() {
             btn.className = 'donation-btn';
             const availCount = availability[amount] || 0;
 
-            // --- THE INSTANT LOCK LOGIC ---
-            // If the user is on cooldown OR currently in a flow, all buttons are dead.
+            // Buttons stay disabled during cooldown or active flow
             const shouldBeDisabled = availCount === 0 || isOnCooldown || isFlowActive;
-
             btn.disabled = shouldBeDisabled;
+            
             if (shouldBeDisabled) {
                 btn.style.opacity = "0.4";
-                btn.style.filter = "grayscale(100%)";
             }
 
             let counterHTML = availCount > 0 ? `<span class="counter">${availCount}</span>` : '';
@@ -338,10 +340,11 @@ async function renderButtons() {
       }
     }
 
-    function finishFlow(success = false) {
+    async function finishFlow(success = false) {
       confirmCard.classList.remove('show');
-      isFlowActive = false; // Allow the timer to show "Anti-spam active" instead of "Opening..."
-      
+      isFlowActive = false; 
+      statusEl.textContent = ""; // Clear "Opening..." text immediately
+
       if (success) {
         successPage.classList.add('show');
         setTimeout(() => tg.close(), 5000);
