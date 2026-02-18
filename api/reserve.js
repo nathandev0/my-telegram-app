@@ -20,18 +20,24 @@ async function handleReserve(req, res) {
     }
 
     // Grab a link and "lock" it for 90 seconds
-    const ninetySecsAgo = new Date(Date.now() - 90 * 1000).toISOString();
-    const { data: link } = await supabase
+    const thirtySecondsAgo = new Date(Date.now() - 30 * 1000).toISOString();    
+    const { data: link, error } = await supabase
+    .from('payment_links')
+    .select('*')
+    .eq('amount', amount)
+    .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecondsAgo})`)
+    .limit(1)
+    .single();
+    if (error || !link) {
+      return res.status(404).json({ error: "No links available right now." });
+    }
+
+    await supabase
       .from('payment_links')
-      .select('*')
-      .eq('amount', amount)
-      .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${ninetySecsAgo})`)
-      .limit(1).single();
-
-    if (!link) return res.status(404).json({ error: "No links left!" });
-
-    await supabase.from('payment_links')
-      .update({ status: 'reserved', reserved_at: new Date().toISOString() })
+      .update({ 
+        status: 'reserved', 
+        reserved_at: new Date().toISOString() 
+      })
       .eq('id', link.id);
 
     return res.json({ widgetUrl: link.url });
