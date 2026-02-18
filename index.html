@@ -429,15 +429,35 @@
     // Setup button click listeners
     const paidBtn = document.getElementById('paidBtn');
     if (paidBtn) {
-        paidBtn.onclick = async () => {
-            if (!currentLink) return;
-            await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ link: currentLink, action: 'paid' })
-            });
-            finishFlow(true);
-        };
+      paidBtn.onclick = async () => {
+        if (!currentLink) return;
+        
+        statusEl.textContent = "Checking blockchain... (can take 20s)";
+        
+        try {
+          const res = await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ 
+              link: currentLink, 
+              action: 'paid'
+            })
+          });
+
+          const data = await res.json();
+
+          if (data.verified) {
+            finishFlow(true); // Show success page
+          } else {
+            // Show the error from Etherscan (e.g. "Balance: 0")
+            tg.showAlert(data.error || "Payment not found. Ensure you sent USDT (ERC-20).");
+            statusEl.textContent = "";
+          }
+        } catch (e) {
+          tg.showAlert("Network error. Try again.");
+          statusEl.textContent = "";
+        }
+      };
     }
 
     const cancelBtn = document.getElementById('cancelBtn');
