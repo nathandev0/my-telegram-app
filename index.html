@@ -222,8 +222,7 @@
   <footer>
     Developed by <a href="https://t.me/nathandev0">@nathandev0</a>
   </footer>
-
-  <script>
+<script>
     const tg = window.Telegram.WebApp;
     tg.ready();
     tg.expand();
@@ -240,11 +239,14 @@
     let currentLink = null;
     let currentAmount = null;
     let isFlowActive = false;
-    const cooldownTimers = new Map();
 
-    const RESERVATION_TIMEOUT = 90_000;
-    const POST_PAID_COOLDOWN = 300_000;
-    const POST_CANCEL_COOLDOWN = 30_000;
+    // We refresh the buttons every 5 seconds so the user sees 
+    // when a link becomes "available" again after a timeout.
+    setInterval(() => {
+        if (!isFlowActive) {
+            renderButtons(); 
+        }
+    }, 5000); 
 
     async function fetchAvailability() {
       try {
@@ -258,46 +260,37 @@
     }
 
     async function renderButtons() {
-    const availability = await fetchAvailability();
-    const grid = document.getElementById('buttons');
-    grid.innerHTML = '';
+        const availability = await fetchAvailability();
+        const grid = document.getElementById('buttons');
+        grid.innerHTML = '';
 
-    [100, 200, 300, 400, 500, 600, 700, 800].forEach(amount => {
-        const btn = document.createElement('button');
-        btn.className = 'donation-btn';
-        const availCount = availability[amount] || 0;
-        const isCooldown = cooldownTimers.has(amount);
+        [100, 200, 300, 400, 500, 600, 700, 800].forEach(amount => {
+            const btn = document.createElement('button');
+            btn.className = 'donation-btn';
+            const availCount = availability[amount] || 0;
 
-        // Disable if: no links, flow active, or in cooldown
-        btn.disabled = availCount === 0 || isFlowActive || isCooldown;
+            // FIX: Button is only disabled if the Database says 0.
+            // We removed the 'isFlowActive' lock here so other buttons stay clickable.
+            btn.disabled = availCount === 0;
 
-        // Visual feedback for disabled/active states
-        if (isFlowActive || isCooldown) {
-        btn.classList.add('flow-active');
-        }
+            let counterHTML = '';
+            if (availCount > 0) {
+                counterHTML = `<span class="counter">${availCount}</span>`;
+            }
 
-        // Small counter in top-right corner (only when low)
-        let counterHTML = '';
-        if (availCount > 0 && availCount < 4) {
-        counterHTML = `<span class="counter">${availCount}</span>`;
-        }
+            btn.innerHTML = `$${amount}${counterHTML}`;
 
-        btn.innerHTML = `$${amount}${counterHTML}`;
+            btn.addEventListener('click', () => {
+                if (btn.disabled) return;
+                reserveAndOpen(amount);
+            });
 
-        // Click handler
-        btn.addEventListener('click', () => {
-        if (btn.disabled) return;
-        reserveAndOpen(amount, btn);
+            grid.appendChild(btn);
         });
-
-        grid.appendChild(btn);
-    });
     }
 
-    async function reserveAndOpen(amount, buttonEl) {
+    async function reserveAndOpen(amount) {
       isFlowActive = true;
-      renderButtons();
-
       statusEl.textContent = 'Reserving link...';
 
       try {
@@ -305,7 +298,7 @@
         const data = await res.json();
 
         if (!res.ok) {
-          tg.showAlert(data.error || 'No available links right now');
+          tg.showAlert(data.error || 'No available links');
           statusEl.textContent = '';
           isFlowActive = false;
           renderButtons();
@@ -318,11 +311,11 @@
         statusEl.textContent = `Opening $${amount} payment...`;
         tg.openLink(currentLink);
 
+        // Show the "Did you pay?" card
         confirmCard.classList.add('show');
 
       } catch (e) {
-        tg.showAlert('Network error. Try again.');
-        statusEl.textContent = '';
+        tg.showAlert('Network error.');
         isFlowActive = false;
         renderButtons();
       }
@@ -331,11 +324,9 @@
     function startCountdown(el, seconds, onComplete) {
       let remaining = seconds;
       el.textContent = remaining;
-
       const interval = setInterval(() => {
         remaining--;
         el.textContent = remaining;
-
         if (remaining <= 0) {
           clearInterval(interval);
           onComplete();
@@ -343,8 +334,9 @@
       }, 1000);
     }
 
-    function finishFlow(success = false) {
+    async function finishFlow(success = false) {
       confirmCard.classList.remove('show');
+      statusEl.textContent = '';
 
       if (success) {
         successPage.classList.add('show');
@@ -353,30 +345,20 @@
         releasedPage.classList.add('show');
         startCountdown(releaseTimerEl, 4, () => tg.close());
       }
-
-      setTimeout(() => {
-        currentLink = null;
-        currentAmount = null;
-        isFlowActive = false;
-        renderButtons();
-      }, 1000);
+      
+      // Reset flags so the app can be used again immediately
+      isFlowActive = false;
+      renderButtons();
     }
 
     paidBtn.onclick = async () => {
       if (!currentLink) return;
+      statusEl.textContent = 'Confirming...';
       await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ link: currentLink, action: 'paid' })
       });
-
-      if (currentAmount) {
-        cooldownTimers.set(currentAmount, setTimeout(() => {
-          cooldownTimers.delete(currentAmount);
-          renderButtons();
-        }, POST_PAID_COOLDOWN));
-      }
-
       finishFlow(true);
     };
 
@@ -387,20 +369,11 @@
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ link: currentLink, action: 'cancel' })
       });
-
-      if (currentAmount) {
-        cooldownTimers.set(currentAmount, setTimeout(() => {
-          cooldownTimers.delete(currentAmount);
-          renderButtons();
-        }, POST_CANCEL_COOLDOWN));
-      }
-
       finishFlow(false);
     };
 
+    // Initial Load
     renderButtons();
-    setInterval(renderButtons, 15000);
-
     tg.MainButton.hide();
   </script>
 </body>
