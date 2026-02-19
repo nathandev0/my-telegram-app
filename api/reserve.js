@@ -42,37 +42,20 @@ async function handleReserve(req, res) {
     return res.json({ widgetUrl: link.url });
   }
 
-  if (method === 'POST') {
-    const { link, action } = req.body;
+    if (method === 'POST') {
+      const { link, action } = req.body;
 
-    if (action === 'paid') {
-      // 1. Mark as 'used' but keep the timestamp so the "Rescue" logic knows when it started
-      await supabase.from('payment_links').update({ 
-        status: 'used',
-        reserved_at: new Date().toISOString() 
-      }).eq('url', link);
+      if (action === 'paid') {
+        // 1. Mark as 'used' and ensure 'is_verified' is false
+        // This tells the Janitor: "Hey, check this one in a minute!"
+        await supabase.from('payment_links').update({ 
+          status: 'used',
+          is_verified: false,
+          reserved_at: new Date().toISOString() 
+        }).eq('url', link);
 
-      // 2. We still try the background check, but now the GET logic is our safety net
-      setTimeout(async () => {
-        try {
-          const { data: linkData } = await supabase.from('payment_links')
-            .select('id, wallet_address, amount, status').eq('url', link).single();
-
-          if (!linkData || linkData.status !== 'used') return;
-
-          const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=0xdac17f958d2ee523a2206206994597c13d831ec7&address=${linkData.wallet_address}&tag=latest&apikey=${process.env.ETHERSCAN_API_KEY}`;
-          const response = await axios.get(url);
-          const balance = parseFloat(response.data.result) / 1000000;
-
-          if (balance < linkData.amount) {
-            // Revert back to available immediately if check actually runs
-            await supabase.from('payment_links').update({ status: 'available', reserved_at: null }).eq('id', linkData.id);
-          }
-        } catch (e) { console.error("Check failed"); }
-      }, 60000);
-
-      return res.json({ success: true });
-    }
+        return res.json({ success: true });
+      }
 
     if (action === 'cancel') {
       await supabase.from('payment_links').update({ status: 'available', reserved_at: null }).eq('url', link);
