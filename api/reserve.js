@@ -48,7 +48,7 @@ async function sendTelegramAlert(message) {
 
         if (error || !selectedLink) {
           console.error("RPC Error or No Links:", error);
-          return res.status(404).json({ error: "No links available. Try again in 5 seconds." });
+          return res.status(404).json({ error: "Try again later" });
         }
 
         // Success! The database has already marked it as 'reserved' and returned the URL
