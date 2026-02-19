@@ -27,7 +27,7 @@ async function handleReserve(req, res) {
 if (method === 'POST') {
     const { link, action } = req.body;
 
-    if (action === 'paid') {
+if (action === 'paid') {
       try {
         const { data: linkData } = await supabase.from('payment_links')
           .select('id, wallet_address, amount')
@@ -35,27 +35,26 @@ if (method === 'POST') {
 
         if (!linkData?.wallet_address) return res.status(404).json({ verified: false, error: "Link not found." });
 
-        const apiKey = process.env.ETHERSCAN_API_KEY;
-        const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=0xdac17f958d2ee523a2206206994597c13d831ec7&address=${linkData.wallet_address}&tag=latest&apikey=${apiKey}`;
+        const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=0xdac17f958d2ee523a2206206994597c13d831ec7&address=${linkData.wallet_address}&tag=latest&apikey=${process.env.ETHERSCAN_API_KEY}`;
         
         const response = await axios.get(url);
         const balance = parseFloat(response.data.result) / 1000000;
 
         if (balance >= linkData.amount) {
-          // 1. Success path: Mark as USED
+          // Path A: SUCCESS - Mark as used permanently
           await supabase.from('payment_links').update({ status: 'used', reserved_at: null }).eq('id', linkData.id);
           return res.json({ success: true, verified: true });
         } else {
-          // 2. Failure path: Payment not found, RELEASE the link back to the pool
+          // Path B: FAILURE - Release link back to available pool
           await supabase.from('payment_links').update({ status: 'available', reserved_at: null }).eq('id', linkData.id);
           
           return res.status(400).json({ 
             verified: false, 
-            error: `Blockchain balance is 0. Link has been released back to the pool.` 
+            error: "Payment not found. The link has been returned to the pool for others to use." 
           });
         }
       } catch (err) {
-        return res.status(500).json({ verified: false, error: "Verification failed." });
+        return res.status(500).json({ verified: false, error: "Blockchain verification failed. Try again." });
       }
     }
     if (action === 'cancel') {

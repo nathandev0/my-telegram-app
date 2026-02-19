@@ -323,44 +323,36 @@
         }
     }
 
-    // "Yes, I Paid" handler with verification
-    getEl('paidBtn').onclick = async () => {
-            if (!state.currentLink) return;
-            const statusEl = getEl('status');
-            const paidBtn = getEl('paidBtn');
+    if (action === 'paid') {
+          try {
+            const { data: linkData } = await supabase.from('payment_links')
+              .select('id, wallet_address, amount')
+              .eq('url', link).single();
+
+            if (!linkData?.wallet_address) return res.status(404).json({ verified: false, error: "Link not found." });
+
+            const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=0xdac17f958d2ee523a2206206994597c13d831ec7&address=${linkData.wallet_address}&tag=latest&apikey=${process.env.ETHERSCAN_API_KEY}`;
             
-            // 1. Lock UI while checking
-            paidBtn.disabled = true;
-            if (statusEl) {
-                statusEl.textContent = "Verifying USDT transfer... (Wait 20s)";
-                statusEl.style.color = "#0088cc";
+            const response = await axios.get(url);
+            const balance = parseFloat(response.data.result) / 1000000;
+
+            if (balance >= linkData.amount) {
+              // Path A: SUCCESS - Mark as used permanently
+              await supabase.from('payment_links').update({ status: 'used', reserved_at: null }).eq('id', linkData.id);
+              return res.json({ success: true, verified: true });
+            } else {
+              // Path B: FAILURE - Release link back to available pool
+              await supabase.from('payment_links').update({ status: 'available', reserved_at: null }).eq('id', linkData.id);
+              
+              return res.status(400).json({ 
+                verified: false, 
+                error: "Payment not found. The link has been returned to the pool for others to use." 
+              });
             }
-
-            try {
-                const res = await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ link: state.currentLink, action: 'paid' })
-                });
-
-                const data = await res.json();
-
-                if (data.verified) {
-                    // Success: Show the standard success page
-                    finishFlow(true);
-                } else {
-                    // Failure: Payment not received yet
-                    paidBtn.disabled = false;
-                    // Display the same message we used to, but with the specific reason
-                    tg.showAlert(data.error || "Payment not detected yet. Please ensure you sent USDT (ERC-20).");
-                    if (statusEl) statusEl.textContent = "";
-                }
-            } catch (e) {
-                paidBtn.disabled = false;
-                tg.showAlert("Network error. Try again shortly.");
-                if (statusEl) statusEl.textContent = "";
-            }
-        };
+          } catch (err) {
+            return res.status(500).json({ verified: false, error: "Blockchain verification failed. Try again." });
+          }
+        }
 
     getEl('cancelBtn').onclick = async () => {
         if (!state.currentLink) return;
@@ -373,24 +365,26 @@
     };
 
     function finishFlow(success) {
-        getEl('confirmCard').classList.remove('show');
-        state.isFlowActive = true; 
-        if (success) {
-            getEl('successPage').classList.add('show');
-            let s = 5;
-            const t = setInterval(() => { 
-                getEl('successTimer').textContent = --s;
-                if (s <= 0) { clearInterval(t); tg.close(); }
-            }, 1000);
-        } else {
-            getEl('releasedPage').classList.add('show');
-            let s = 4;
-            const t = setInterval(() => { 
-                getEl('releaseTimer').textContent = --s;
-                if (s <= 0) { clearInterval(t); tg.close(); }
-            }, 1000);
+            getEl('confirmCard').classList.remove('show'); // Hide the question
+            state.isFlowActive = true; // Keep buttons locked in background
+
+            if (success) {
+                // This is your "Thank You Card"
+                getEl('successPage').classList.add('show'); 
+                let s = 5;
+                const t = setInterval(() => { 
+                    getEl('successTimer').textContent = --s;
+                    if (s <= 0) { clearInterval(t); tg.close(); }
+                }, 1000);
+            } else {
+                getEl('releasedPage').classList.add('show');
+                let s = 4;
+                const t = setInterval(() => { 
+                    getEl('releaseTimer').textContent = --s;
+                    if (s <= 0) { clearInterval(t); tg.close(); }
+                }, 1000);
+            }
         }
-    }
 
     renderButtons();
     setInterval(() => { if (!state.isFlowActive) renderButtons(); }, 5000);
