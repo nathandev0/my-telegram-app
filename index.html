@@ -273,20 +273,36 @@
     }
 
     async function reserveAndOpen(amount) {
-      isFlowActive = true;
-      renderButtons();
-      try {
-        const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
-        const data = await res.json();
-        
-        currentLink = data.widgetUrl;
-        tg.openLink(currentLink);
-        document.getElementById('confirmCard').classList.add('show');
-      } catch (e) {
-        isFlowActive = false;
-        renderButtons();
-      }
-    }
+          isFlowActive = true; 
+          // 1. Disable buttons immediately to prevent double-clicks
+          renderButtons(); 
+          
+          try {
+            const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
+            const data = await res.json();
+            
+            if (!res.ok) {
+              tg.showAlert(data.error || 'No links available');
+              isFlowActive = false;
+              renderButtons();
+              return;
+            }
+
+            currentLink = data.widgetUrl;
+
+            // 2. FORCE REFRESH: This is the missing piece.
+            // It fetches the NEW counts from the server (where the link is now 'reserved')
+            // and updates the buttons BEFORE opening the link.
+            await renderButtons(); 
+
+            tg.openLink(currentLink);
+            document.getElementById('confirmCard').classList.add('show');
+            
+          } catch (e) {
+            isFlowActive = false;
+            renderButtons();
+          }
+        }
 
     document.getElementById('paidBtn').onclick = async () => {
       if (!currentLink) return;
