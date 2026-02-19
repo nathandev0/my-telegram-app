@@ -420,26 +420,31 @@
     
     // Setup button click listeners
     document.getElementById('paidBtn').onclick = async () => {
-      if (!currentLink || document.getElementById('paidBtn').disabled) return;
-      
-      document.getElementById('paidBtn').disabled = true;
+        if (!currentLink || document.getElementById('paidBtn').disabled) return;
+        
+        document.getElementById('paidBtn').disabled = true;
 
-      // Get username from Telegram
-      const user = tg.initDataUnsafe?.user;
-      const username = user?.username ? `@${user.username}` : `ID: ${user?.id || 'Unknown'}`;
+        // RE-FETCH the user data right here
+        const user = window.Telegram.WebApp.initDataUnsafe?.user;
+        
+        // Logic: Try Username first, then First Name, then ID, then "Anonymous"
+        const username = user?.username ? `@${user.username}` : 
+                        user?.first_name ? user.first_name : 
+                        user?.id ? `ID: ${user.id}` : "Anonymous";
 
-      // Notify the server with the username
-      fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ 
-            link: currentLink, 
-            action: 'paid',
-            username: username // <--- Adding this here
-        })
-      });
+        console.log("Captured User:", username); // Check this in your mobile inspect tools
 
-      finishFlow(true); 
+        fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ 
+                link: currentLink, 
+                action: 'paid',
+                username: username 
+            })
+        });
+
+        finishFlow(true); 
     };
 
     const cancelBtn = document.getElementById('cancelBtn');
