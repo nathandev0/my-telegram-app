@@ -393,35 +393,27 @@
         }, 1000);
     }
 
-    async function finishFlow(success = false) {
-        const confirmCard = document.getElementById('confirmCard');
-        const statusEl = document.getElementById('status');
-        const successPage = document.getElementById('successPage');
-        const releasedPage = document.getElementById('releasedPage');
-
-        if (confirmCard) confirmCard.classList.add('hide'); // Smoothly hide the card
-        confirmCard.classList.remove('show');
+    function finishFlow(success) {
+        document.getElementById('confirmCard').classList.remove('show');
         
-        if (statusEl) statusEl.textContent = '';
-        
-        // Note: We keep isFlowActive = true so background buttons stay disabled
+        // IMPORTANT: Keep isFlowActive = true! 
+        // This stops the 5-second setInterval from overwriting your screen 
+        // while the "Thank You" card is showing.
         isFlowActive = true; 
 
-        if (success) {
-            if (successPage) successPage.classList.add('show');
-            // Start 5-second countdown then CLOSE the app
-            startCountdown(document.getElementById('successTimer'), 5, () => {
-                console.log("Closing app...");
-                tg.close(); // This is the line that was missing!
-            });
-        } else {
-            if (releasedPage) releasedPage.classList.add('show');
-            // Start 4-second countdown then CLOSE the app
-            startCountdown(document.getElementById('releaseTimer'), 4, () => {
-                console.log("Closing app...");
-                tg.close(); // This is the line that was missing!
-            });
-        }
+        const page = success ? document.getElementById('successPage') : document.getElementById('releasedPage');
+        const timerEl = success ? document.getElementById('successTimer') : document.getElementById('releaseTimer');
+        
+        if (page) page.classList.add('show');
+        
+        let s = success ? 5 : 4;
+        const t = setInterval(() => {
+            if (timerEl) timerEl.textContent = --s;
+            if (s <= 0) {
+                clearInterval(t);
+                tg.close();
+            }
+        }, 1000);
     }
 
     // 3. INITIALIZE THE APP

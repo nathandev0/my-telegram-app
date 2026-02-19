@@ -1,11 +1,9 @@
+// api/reserve.js
 const { createClient } = require('@supabase/supabase-js');
-
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 async function handleReserve(req, res) {
   const method = req.method;
-  
-  // Define the 30-second expiry for the "Reserved" (question) state
   const thirtySecAgo = new Date(Date.now() - 30 * 1000).toISOString();
 
   if (method === 'GET') {
@@ -13,6 +11,8 @@ async function handleReserve(req, res) {
 
     if (all === 'true') {
       const { data } = await supabase.from('payment_links').select('amount')
+        // ONLY pull available or timed-out reserved links.
+        // DO NOT include "used" links here.
         .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecAgo})`);
       
       const counts = data.reduce((acc, curr) => {
@@ -22,9 +22,6 @@ async function handleReserve(req, res) {
       return res.json({ availability: counts });
     }
 
-    // Reservation Logic: 
-    // Pulls 'available' links OR 'reserved' links that timed out (30s)
-    // IMPORTANT: We REMOVED the 'used' rescue here so the 5-minute Janitor can work.
     const { data: link, error } = await supabase.from('payment_links').select('*')
       .eq('amount', amount)
       .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecAgo})`)
@@ -32,7 +29,6 @@ async function handleReserve(req, res) {
 
     if (error || !link) return res.status(404).json({ error: "No links available." });
 
-    // Mark as reserved (starts the 30-second countdown for the Yes/No question)
     await supabase.from('payment_links').update({ 
       status: 'reserved', 
       reserved_at: new Date().toISOString() 
@@ -45,8 +41,8 @@ async function handleReserve(req, res) {
     const { link, action } = req.body;
 
     if (action === 'paid') {
-      // Mark as 'used' and RESET the timestamp to NOW.
-      // Your cleanup.js Janitor will see this timestamp and wait exactly 5 minutes.
+      // Mark as USED and set IS_VERIFIED to false.
+      // This "locks" the link for 5 minutes until cleanup.js checks it.
       await supabase.from('payment_links').update({ 
         status: 'used',
         is_verified: false,
