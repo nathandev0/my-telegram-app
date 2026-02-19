@@ -7,48 +7,236 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     * { box-sizing: border-box; }
-    body { font-family: -apple-system, sans-serif; background: var(--tg-theme-bg-color, #fff); color: var(--tg-theme-text-color, #000); display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; }
-    .container { width: 100%; max-width: 420px; padding: 24px 16px; }
-    h1 { text-align: center; margin-bottom: 4px; }
-    .subtitle { text-align: center; color: var(--tg-theme-hint-color); margin-bottom: 28px; }
-    .donation-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
-    .donation-btn { height: 54px; font-weight: 600; border-radius: 12px; border: none; background: var(--tg-theme-secondary-bg-color); color: var(--tg-theme-button-color); position: relative; cursor: pointer; }
-    .donation-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .counter { position: absolute; top: 4px; right: 8px; font-size: 11px; background: rgba(0,0,0,0.05); padding: 2px 5px; border-radius: 8px; }
-    #status { text-align: center; min-height: 24px; margin: 12px 0; }
-    .confirm-card, .success-page, .released-page { display: none; text-align: center; background: var(--tg-theme-secondary-bg-color); padding: 24px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-    .show { display: block; }
-    .yes-btn { width: 100%; background: #2481cc; color: #fff; padding: 16px; border-radius: 12px; border: none; font-weight: 600; margin-bottom: 12px; }
-    .no-btn { width: 100%; background: transparent; color: #e53935; border: none; padding: 12px; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: var(--tg-theme-bg-color, #ffffff);
+      color: var(--tg-theme-text-color, #000000);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 420px;
+      padding: 24px 16px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 600;
+      margin: 0 0 4px;
+      text-align: center;
+    }
+
+    .subtitle {
+      font-size: 15px;
+      color: var(--tg-theme-hint-color, #999999);
+      margin: 0 0 28px;
+      text-align: center;
+    }
+
+    .donation-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .donation-btn {
+      height: 54px;
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--tg-theme-button-color, #0088cc);
+      background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .donation-btn:disabled,
+    .donation-btn.flow-active,
+    .donation-btn.cooldown {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .donation-btn .counter {
+      position: absolute;
+      top: 4px;
+      right: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--tg-theme-hint-color, #999999);
+      background: rgba(0,0,0,0.08);
+      padding: 2px 6px;
+      border-radius: 10px;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    #status {
+      font-size: 15px;
+      text-align: center;
+      min-height: 24px;
+      margin: 16px 0; /* Adds a bit of space around the anti-spam timer */
+      transition: color 0.3s ease;
+    }
+
+    .confirm-card, .success-page, .released-page {
+      width: 100%;
+      max-width: 380px;
+      margin: 12px auto 0;
+      background: var(--tg-theme-secondary-bg-color, #f8f9fa);
+      border-radius: 16px;
+      padding: 24px 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      overflow: hidden;
+      display: none;
+      text-align: center;
+    }
+
+    .confirm-card.show, .success-page.show, .released-page.show {
+      display: block;
+    }
+
+    .confirm-card h3, .success-page h2, .released-page h2 {
+      font-size: 18px;
+      font-weight: 600;
+      margin: 0 0 16px;
+    }
+
+    .success-page .checkmark {
+      font-size: 64px;
+      margin-bottom: 16px;
+      color: #34c759;
+    }
+
+    .released-page .icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      color: #ff9500;
+    }
+
+    .timer {
+      font-size: 15px;
+      color: var(--tg-theme-hint-color, #999999);
+      margin-top: 12px;
+    }
+
+    .yes-btn {
+      width: 100%;
+      background: #2481cc;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 17px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 2px 8px rgba(36, 129, 204, 0.3);
+    }
+
+    .no-btn {
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: #e53935;
+      font-size: 16px;
+      font-weight: 500;
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    footer {
+      margin-top: auto;
+      padding: 16px 0 24px;
+      font-size: 13px;
+      color: var(--tg-theme-hint-color, #999999);
+      text-align: center;
+      width: 100%;
+    }
+
+    footer a {
+      color: var(--tg-theme-button-color, #0088cc);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .skeleton-btn {
+      height: 54px;
+      background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+      border-radius: 12px;
+      border: none;
+      animation: pulse 1.5s infinite ease-in-out;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
   </style>
 </head>
 <body>
+
   <div class="container">
     <h1>Support Me</h1>
     <div class="subtitle">Choose donation amount</div>
+
     <div class="donation-grid" id="buttons"></div>
+
     <div id="status"></div>
 
     <div class="confirm-card" id="confirmCard">
       <h3>Did you complete the payment?</h3>
-      <button class="yes-btn" id="paidBtn">✅ Yes, I paid</button>
-      <button class="no-btn" id="cancelBtn">❌ No, release link</button>
+      <button class="yes-btn" id="paidBtn">
+        <span style="font-size:20px;">✅</span> Yes, I paid
+      </button>
+      <button class="no-btn" id="cancelBtn">
+        ❌ No, release link
+      </button>
     </div>
 
     <div class="success-page" id="successPage">
-      <div style="font-size: 60px;">🎉</div>
+      <div class="checkmark">🎉</div>
       <h2>Thank you so much!</h2>
-      <p>Closing in <span id="successTimer">5</span>s...</p>
+      <p style="font-size:15px; color:var(--tg-theme-hint-color,#999); margin:8px 0 12px;">
+        Your support really helps ❤️<br>
+        Closing in <span id="successTimer">5</span> seconds...
+      </p>
     </div>
 
     <div class="released-page" id="releasedPage">
-      <div style="font-size: 60px;">🔄</div>
+      <div class="icon">🔄</div>
       <h2>No worries!</h2>
-      <p>Closing in <span id="releaseTimer">4</span>s...</p>
+      <p style="font-size:15px; color:var(--tg-theme-hint-color,#999); margin:8px 0 12px;">
+        You can always come back later.<br>
+        Closing in <span id="releaseTimer">4</span> seconds...
+      </p>
     </div>
   </div>
 
-  <script>
+  <footer>
+    Developed by <a href="https://t.me/nathandev0">@nathandev0</a>
+  </footer>
+<script>
     const tg = window.Telegram.WebApp;
     tg.ready(); tg.expand();
 
@@ -66,13 +254,16 @@
     async function renderButtons() {
       const grid = document.getElementById('buttons');
       if (!grid) return;
+
       const availability = await fetchAvailability();
       grid.innerHTML = '';
+
       [100, 200, 300, 400, 500, 600, 700, 800].forEach(amount => {
         const btn = document.createElement('button');
         btn.className = 'donation-btn';
         const count = availability[amount] || 0;
         const disabled = count === 0 || isFlowActive;
+        
         btn.disabled = disabled;
         btn.innerHTML = `$${amount}${count > 0 ? `<span class="counter">${count}</span>` : ''}`;
         btn.onclick = () => !disabled && reserveAndOpen(amount);
@@ -82,53 +273,72 @@
 
     async function reserveAndOpen(amount) {
       isFlowActive = true;
+      // Step 1: Disable buttons immediately
       renderButtons(); 
+
       try {
         const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
         const data = await res.json();
+        
+        if (!res.ok) {
+            tg.showAlert(data.error || "Unavailable");
+            isFlowActive = false;
+            renderButtons();
+            return;
+        }
+
         currentLink = data.widgetUrl;
-        
-        // Refresh buttons so the link appears taken (count drops)
+
+        // Step 2: Refresh the counters so "1" becomes "0" immediately
         await renderButtons(); 
-        
+
         tg.openLink(currentLink);
         document.getElementById('confirmCard').classList.add('show');
-      } catch (e) { isFlowActive = false; renderButtons(); }
+      } catch (e) {
+        isFlowActive = false;
+        renderButtons();
+      }
     }
 
     document.getElementById('paidBtn').onclick = async () => {
       if (!currentLink) return;
-      document.getElementById('paidBtn').disabled = true;
-      
-      // Tell backend to check balance
+      // Mark as used in database
       await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ link: currentLink, action: 'paid' })
       });
-      
-      // Per your request: Even if it failed behind the scenes, we show the Thank You card.
-      finishFlow(true); 
+      finishFlow(true); // Shows Thank You card
     };
 
     document.getElementById('cancelBtn').onclick = async () => {
       if (!currentLink) return;
+      // Release back to pool
       await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ link: currentLink, action: 'cancel' })
       });
-      finishFlow(false);
+      finishFlow(false); // Shows Released card
     };
 
     function finishFlow(success) {
       document.getElementById('confirmCard').classList.remove('show');
       const page = success ? document.getElementById('successPage') : document.getElementById('releasedPage');
       const timerEl = success ? document.getElementById('successTimer') : document.getElementById('releaseTimer');
+      
       page.classList.add('show');
       let s = success ? 5 : 4;
-      const t = setInterval(() => { timerEl.textContent = --s; if (s <= 0) { clearInterval(t); tg.close(); } }, 1000);
+      const t = setInterval(() => {
+        timerEl.textContent = --s;
+        if (s <= 0) {
+          clearInterval(t);
+          tg.close();
+        }
+      }, 1000);
     }
 
+    // Initial render and 5-second auto-refresh
     renderButtons();
     setInterval(() => { if (!isFlowActive) renderButtons(); }, 5000);
 </script>
