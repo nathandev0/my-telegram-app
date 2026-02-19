@@ -4,11 +4,11 @@ const axios = require('axios');
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 module.exports = async (req, res) => {
+  // This allows you to open it in your browser to test
   try {
-    // 1. Only grab links that are 'used' but NOT yet 'verified'
-    // We also check if it's been 'used' for at least 1 minute to give the user time to pay
     const oneMinAgo = new Date(Date.now() - 60 * 1000).toISOString();
 
+    // 1. Only grab 'used' but 'unverified' links
     const { data: pendingLinks, error: fetchError } = await supabase
       .from('payment_links')
       .select('*')
@@ -17,11 +17,16 @@ module.exports = async (req, res) => {
       .lt('reserved_at', oneMinAgo);
 
     if (fetchError) throw fetchError;
+
     if (!pendingLinks || pendingLinks.length === 0) {
-      return res.json({ message: "Pool is clean. No unverified payments found." });
+      return res.json({ 
+        status: "success", 
+        message: "Pool is already clean. No unverified links to check." 
+      });
     }
 
-    console.log(`Checking ${pendingLinks.length} unverified payments...`);
+    let restored = 0;
+    let verified = 0;
 
     for (const link of pendingLinks) {
       const wallet = link.wallet_address.toLowerCase();
@@ -32,27 +37,27 @@ module.exports = async (req, res) => {
       const balance = parseFloat(response.data.result) / 1000000;
 
       if (balance >= link.amount) {
-        // SUCCESS: Payment found! Mark as verified so we never check again.
-        await supabase.from('payment_links')
-          .update({ is_verified: true })
-          .eq('id', link.id);
-        console.log(`Verified payment for link: ${link.id}`);
+        await supabase.from('payment_links').update({ is_verified: true }).eq('id', link.id);
+        verified++;
       } else {
-        // FAIL: No payment found after 1 minute. Return to pool.
-        await supabase.from('payment_links')
-          .update({ 
-            status: 'available', 
-            is_verified: false, 
-            reserved_at: null 
-          })
-          .eq('id', link.id);
-        console.log(`Returned link ${link.id} to pool (Insufficient funds).`);
+        // Return to available pool
+        await supabase.from('payment_links').update({ 
+          status: 'available', 
+          is_verified: false, 
+          reserved_at: null 
+        }).eq('id', link.id);
+        restored++;
       }
     }
 
-    return res.json({ status: "Success", processed: pendingLinks.length });
+    return res.json({ 
+      status: "success", 
+      checked: pendingLinks.length, 
+      verified_now: verified, 
+      returned_to_pool: restored 
+    });
+
   } catch (err) {
-    console.error("Cleanup Error:", err.message);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ status: "error", message: err.message });
   }
 };
