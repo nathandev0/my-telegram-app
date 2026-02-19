@@ -73,7 +73,7 @@ if (method === 'POST') {
       if (updateError) return res.status(500).json({ error: "Update failed" });
 
       await sendTelegramAlert(
-        `🔔 <b>Payment Claimed</b>\n` +
+        `🔔 <b>PAYMENT CLAIMED</b>\n` +
         `User: <b>${username || 'Unknown'}</b>\n` +
         `Amount: $${updatedLink.amount}\n` +
         `Wallet: <code>${updatedLink.wallet_address}</code>`
