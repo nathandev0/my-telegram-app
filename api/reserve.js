@@ -18,40 +18,43 @@ async function sendTelegramAlert(message) {
   }
 }
 
-async function handleReserve(req, res) {
+  async function handleReserve(req, res) {
   const method = req.method;
   const thirtySecAgo = new Date(Date.now() - 30 * 1000).toISOString();
 
   if (method === 'GET') {
-    const { all, amount } = req.query;
+      const { all, amount } = req.query;
 
-    if (all === 'true') {
-      const { data } = await supabase.from('payment_links').select('amount')
-        // ONLY pull available or timed-out reserved links.
-        // DO NOT include "used" links here.
-        .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecAgo})`);
-      
-      const counts = data.reduce((acc, curr) => {
-        acc[curr.amount] = (acc[curr.amount] || 0) + 1;
-        return acc;
-      }, {});
-      return res.json({ availability: counts });
+      // 1. Keep this for the UI counters
+      if (all === 'true') {
+        const { data } = await supabase.from('payment_links').select('amount')
+          .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecAgo})`);
+        
+        const counts = data.reduce((acc, curr) => {
+          acc[curr.amount] = (acc[curr.amount] || 0) + 1;
+          return acc;
+        }, {});
+        return res.json({ availability: counts });
+      }
+
+      // 2. NEW LOGIC: Use RPC to prevent two users getting the same link
+      if (amount) {
+        const { data: links, error } = await supabase.rpc('reserve_payment_link', { 
+          target_amount: parseInt(amount) 
+        });
+
+        // RPC returns an array of rows affected
+        const selectedLink = links && links.length > 0 ? links[0] : null;
+
+        if (error || !selectedLink) {
+          console.error("RPC Error or No Links:", error);
+          return res.status(404).json({ error: "No links available. Try again in 5 seconds." });
+        }
+
+        // Success! The database has already marked it as 'reserved' and returned the URL
+        return res.json({ widgetUrl: selectedLink.url });
+      }
     }
-
-    const { data: link, error } = await supabase.from('payment_links').select('*')
-      .eq('amount', amount)
-      .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecAgo})`)
-      .limit(1).single();
-
-    if (error || !link) return res.status(404).json({ error: "No links available." });
-
-    await supabase.from('payment_links').update({ 
-      status: 'reserved', 
-      reserved_at: new Date().toISOString() 
-    }).eq('id', link.id);
-
-    return res.json({ widgetUrl: link.url });
-  }
 
 if (method === 'POST') {
     const { link, action, username } = req.body; // <--- Receive username
