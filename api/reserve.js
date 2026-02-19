@@ -2,6 +2,15 @@
 const { createClient } = require('@supabase/supabase-js');
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
+async function sendTelegramAlert(message) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.ADMIN_CHAT_ID;
+  const url = `https://api.telegram.org/bot${token}/sendMessage`;
+  try {
+    await axios.post(url, { chat_id: chatId, text: message, parse_mode: 'HTML' });
+  } catch (e) { console.error("TG Alert Failed", e.message); }
+}
+
 async function handleReserve(req, res) {
   const method = req.method;
   const thirtySecAgo = new Date(Date.now() - 30 * 1000).toISOString();
@@ -48,6 +57,9 @@ async function handleReserve(req, res) {
         is_verified: false,
         reserved_at: new Date().toISOString() 
       }).eq('url', link);
+      
+      // Send the "Somebody claimed payment" message
+      sendTelegramAlert(`🔔 <b>New Payment Claim</b>\nAmount: $${linkData.amount}\nWallet: <code>${linkData.wallet_address}</code>\n\n<i>Verification will start in 5 minutes...</i>`);
 
       return res.json({ success: true });
     }

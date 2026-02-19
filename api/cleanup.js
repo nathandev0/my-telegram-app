@@ -33,6 +33,7 @@ module.exports = async (req, res) => {
 
       if (balance >= link.amount) {
         await supabase.from('payment_links').update({ is_verified: true }).eq('id', link.id);
+        await sendTelegramAlert(`✅ <b>PAYMENT CONFIRMED</b>\nReceived: ${balance} USDT\nTarget: $${link.amount}\nWallet: <code>${link.wallet_address}</code>\nLink: ${link.url}`);
         verified++;
       } else {
         // Return to available pool only after 5 mins of 0 balance
@@ -41,6 +42,7 @@ module.exports = async (req, res) => {
           is_verified: false, 
           reserved_at: null 
         }).eq('id', link.id);
+        await sendTelegramAlert(`❌ <b>PAYMENT NOT FOUND</b>\nLink for $${link.amount} has been returned to the pool.\nWallet: <code>${link.wallet_address}</code>`);
         restored++;
       }
     }
