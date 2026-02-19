@@ -3,6 +3,21 @@ const axios = require('axios');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
+(async () => {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.ADMIN_CHAT_ID;
+  console.log("Testing Telegram Connection...");
+  try {
+    await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
+      chat_id: chatId,
+      text: "🚀 Server is Live! Telegram notifications are connected."
+    });
+    console.log("Test message sent successfully!");
+  } catch (e) {
+    console.error("TG Test Error:", e.response ? e.response.data : e.message);
+  }
+})();
+
 module.exports = async (req, res) => {
   try {
     // FORCE 5 MINUTE GRACE PERIOD
