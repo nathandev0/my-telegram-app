@@ -5,12 +5,14 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANO
 
 async function sendTelegramAlert(message) {
   try {
-    await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      chat_id: process.env.ADMIN_CHAT_ID,
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.ADMIN_CHAT_ID;
+    await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
+      chat_id: chatId,
       text: message,
       parse_mode: 'HTML'
     });
-  } catch (e) { console.error("TG Alert Error:", e.message); }
+  } catch (e) { console.error("TG Alert Error:", e.response ? e.response.data : e.message); }
 }
 
 module.exports = async (req, res) => {
@@ -26,13 +28,9 @@ module.exports = async (req, res) => {
       .eq('is_verified', false)
       .lt('reserved_at', fiveMinsAgo); // This is the 5-minute lock
 
-    if (fetchError) throw fetchError;
     if (!pendingLinks || pendingLinks.length === 0) {
       return res.json({ status: "success", message: "No links past the 5-minute grace period yet." });
     }
-
-    let restored = 0;
-    let verified = 0;
 
     for (const link of pendingLinks) {
       const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=0xdac17f958d2ee523a2206206994597c13d831ec7&address=${link.wallet_address}&tag=latest&apikey=${process.env.ETHERSCAN_API_KEY}`;
@@ -48,7 +46,7 @@ module.exports = async (req, res) => {
           is_verified: false, 
           reserved_at: null 
         }).eq('id', link.id);
-        await sendTelegramAlert(`❌ <b>PAYMENT FAILED</b>\nReturned to pool: $${link.amount}\nReason: No funds found.\nWallet: <code>${link.wallet_address}</code>`);
+        await sendTelegramAlert(`❌ <b>PAYMENT FAILED</b>\nReturned to pool: $${link.amount}\nWallet: <code>${link.wallet_address}</code>`);
       }
     }
 

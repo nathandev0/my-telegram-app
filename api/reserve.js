@@ -5,13 +5,15 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANO
 // Helper function for alerts
 async function sendTelegramAlert(message) {
   try {
-    await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      chat_id: process.env.ADMIN_CHAT_ID,
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.ADMIN_CHAT_ID;
+    await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
+      chat_id: chatId,
       text: message,
       parse_mode: 'HTML'
     });
   } catch (e) {
-    console.error("TG Alert Error:", e.message);
+    console.error("TG Alert Error:", e.response ? e.response.data : e.message);
   }
 }
 
@@ -54,22 +56,24 @@ async function handleReserve(req, res) {
     const { link, action } = req.body;
 
     if (action === 'paid') {
+      // 1. Mark as 'used' in DB
+      const { data: updatedLink, error: updateError } = await supabase.from('payment_links')
+        .update({ 
+          status: 'used',
+          is_verified: false,
+          reserved_at: new Date().toISOString() 
+        })
+        .eq('url', link)
+        .select()
+        .single();
 
-      // 1. Fetch details for the alert before updating
-      const { data: linkData } = await supabase.from('payment_links')
-        .select('*').eq('url', link).single();
-      
-      // 2. Update DB
-      // Mark as USED and set IS_VERIFIED to false.
-      // This "locks" the link for 5 minutes until cleanup.js checks it.
-      await supabase.from('payment_links').update({ 
-        status: 'used',
-        is_verified: false,
-        reserved_at: new Date().toISOString() 
-      }).eq('url', link);
-      
-      // 3. Send Alert
-      await sendTelegramAlert(`🔔 <b>Payment Claimed</b>\nAmount: $${linkData.amount}\nWallet: <code>${linkData.wallet_address}</code>\n\n<i>Janitor will check this in 5 minutes.</i>`);
+      if (updateError) {
+        console.error("DB Update Error:", updateError);
+        return res.status(500).json({ error: "Database update failed" });
+      }
+
+      // 2. Send Alert with the data we just updated
+      await sendTelegramAlert(`🔔 <b>Payment Claimed</b>\nAmount: $${updatedLink.amount}\nWallet: <code>${updatedLink.wallet_address}</code>\n\n<i>Janitor check in 5 mins.</i>`);
 
       return res.json({ success: true });
     }
