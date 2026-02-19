@@ -238,8 +238,7 @@
   </footer>
 <script>
     const tg = window.Telegram.WebApp;
-    tg.ready();
-    tg.expand();
+    tg.ready(); tg.expand();
 
     let currentLink = null;
     let isFlowActive = false;
@@ -273,55 +272,54 @@
     }
 
     async function reserveAndOpen(amount) {
-          isFlowActive = true; 
-          // 1. Disable buttons immediately to prevent double-clicks
-          renderButtons(); 
-          
-          try {
-            const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
-            const data = await res.json();
-            
-            if (!res.ok) {
-              tg.showAlert(data.error || 'No links available');
-              isFlowActive = false;
-              renderButtons();
-              return;
-            }
+      isFlowActive = true;
+      // Step 1: Disable buttons immediately
+      renderButtons(); 
 
-            currentLink = data.widgetUrl;
-
-            // 2. FORCE REFRESH: This is the missing piece.
-            // It fetches the NEW counts from the server (where the link is now 'reserved')
-            // and updates the buttons BEFORE opening the link.
-            await renderButtons(); 
-
-            tg.openLink(currentLink);
-            document.getElementById('confirmCard').classList.add('show');
-            
-          } catch (e) {
+      try {
+        const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
+        const data = await res.json();
+        
+        if (!res.ok) {
+            tg.showAlert(data.error || "Unavailable");
             isFlowActive = false;
             renderButtons();
-          }
+            return;
         }
+
+        currentLink = data.widgetUrl;
+
+        // Step 2: Refresh the counters so "1" becomes "0" immediately
+        await renderButtons(); 
+
+        tg.openLink(currentLink);
+        document.getElementById('confirmCard').classList.add('show');
+      } catch (e) {
+        isFlowActive = false;
+        renderButtons();
+      }
+    }
 
     document.getElementById('paidBtn').onclick = async () => {
       if (!currentLink) return;
+      // Mark as used in database
       await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ link: currentLink, action: 'paid' })
       });
-      finishFlow(true);
+      finishFlow(true); // Shows Thank You card
     };
 
     document.getElementById('cancelBtn').onclick = async () => {
       if (!currentLink) return;
+      // Release back to pool
       await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ link: currentLink, action: 'cancel' })
       });
-      finishFlow(false);
+      finishFlow(false); // Shows Released card
     };
 
     function finishFlow(success) {
@@ -340,6 +338,7 @@
       }, 1000);
     }
 
+    // Initial render and 5-second auto-refresh
     renderButtons();
     setInterval(() => { if (!isFlowActive) renderButtons(); }, 5000);
 </script>

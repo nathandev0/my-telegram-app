@@ -7,8 +7,6 @@ async function handleReserve(req, res) {
 
   if (method === 'GET') {
     const { all, amount } = req.query;
-
-    // 30-second reservation window
     const thirtySecondsAgo = new Date(Date.now() - 30 * 1000).toISOString();
 
     if (all === 'true') {
@@ -39,7 +37,7 @@ async function handleReserve(req, res) {
 
   if (method === 'POST') {
     const { link, action } = req.body;
-    // Trust system: 'paid' makes it 'used', 'cancel' makes it 'available'
+    // Trust system: action 'paid' = 'used', everything else = 'available'
     const newStatus = (action === 'paid') ? 'used' : 'available';
     
     await supabase.from('payment_links')
