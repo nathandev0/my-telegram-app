@@ -424,14 +424,21 @@
       
       document.getElementById('paidBtn').disabled = true;
 
-      // Notify the server
+      // Get username from Telegram
+      const user = tg.initDataUnsafe?.user;
+      const username = user?.username ? `@${user.username}` : `ID: ${user?.id || 'Unknown'}`;
+
+      // Notify the server with the username
       fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ link: currentLink, action: 'paid' })
+        body: JSON.stringify({ 
+            link: currentLink, 
+            action: 'paid',
+            username: username // <--- Adding this here
+        })
       });
 
-      // Show Thank You message immediately
       finishFlow(true); 
     };
 

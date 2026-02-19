@@ -53,28 +53,31 @@ async function handleReserve(req, res) {
     return res.json({ widgetUrl: link.url });
   }
 
-  if (method === 'POST') {
-    const { link, action } = req.body;
+if (method === 'POST') {
+    const { link, action, username } = req.body; // <--- Receive username
 
     if (action === 'paid') {
-      // 1. Mark as 'used' in DB
+      const { link, username } = req.body; // username comes from index.html
+
       const { data: updatedLink, error: updateError } = await supabase.from('payment_links')
         .update({ 
           status: 'used',
           is_verified: false,
-          reserved_at: new Date().toISOString() 
+          reserved_at: new Date().toISOString(),
+          claimed_by: username // <--- Save it here!
         })
         .eq('url', link)
         .select()
         .single();
 
-      if (updateError) {
-        console.error("DB Update Error:", updateError);
-        return res.status(500).json({ error: "Database update failed" });
-      }
+      if (updateError) return res.status(500).json({ error: "Update failed" });
 
-      // 2. Send Alert with the data we just updated
-      await sendTelegramAlert(`🔔 <b>Payment Claimed</b>\nAmount: $${updatedLink.amount}\nWallet: <code>${updatedLink.wallet_address}</code>\n\n<i>Janitor check in 5 mins.</i>`);
+      await sendTelegramAlert(
+        `🔔 <b>Payment Claimed</b>\n` +
+        `User: <b>${username || 'Unknown'}</b>\n` +
+        `Amount: $${updatedLink.amount}\n` +
+        `Wallet: <code>${updatedLink.wallet_address}</code>`
+      );
 
       return res.json({ success: true });
     }

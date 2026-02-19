@@ -36,18 +36,32 @@ module.exports = async (req, res) => {
       const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=0xdac17f958d2ee523a2206206994597c13d831ec7&address=${link.wallet_address}&tag=latest&apikey=${process.env.ETHERSCAN_API_KEY}`;
       const response = await axios.get(url);
       const balance = parseFloat(response.data.result) / 1000000;
+      const user = link.claimed_by || 'Unknown'; // <--- Get saved username
 
       if (balance >= link.amount) {
         await supabase.from('payment_links').update({ is_verified: true }).eq('id', link.id);
-        await sendTelegramAlert(`✅ <b>PAYMENT CONFIRMED</b>\nReceived: ${balance} USDT\nAmount: $${link.amount}\nWallet: <code>${link.wallet_address}</code>`);
-      } else {
-        await supabase.from('payment_links').update({ 
-          status: 'available', 
-          is_verified: false, 
-          reserved_at: null 
-        }).eq('id', link.id);
-        await sendTelegramAlert(`❌ <b>PAYMENT FAILED</b>\nReturned to pool: $${link.amount}\nWallet: <code>${link.wallet_address}</code>`);
-      }
+            
+            await sendTelegramAlert(
+            `✅ <b>PAYMENT CONFIRMED</b>\n` +
+            `User: <b>${user}</b>\n` + // <--- Added here
+            `Amount: ${balance} USDT\n` +
+            `Wallet: <code>${link.wallet_address}</code>`
+            );
+        } else {
+            await supabase.from('payment_links').update({ 
+            status: 'available', 
+            is_verified: false, 
+            reserved_at: null,
+            claimed_by: null // Clear it so the next person starts fresh
+            }).eq('id', link.id);
+
+            await sendTelegramAlert(
+            `❌ <b>PAYMENT NOT CONFIRMED</b>\n` +
+            `User: <b>${user}</b>\n` + // <--- Added here
+            `Amount: ${balance} USDT\n` +
+            `Wallet: <code>${link.wallet_address}</code>`
+            );
+        }
     }
     return res.json({ status: "success", processed: pendingLinks.length });
   } catch (err) {
