@@ -24,24 +24,38 @@ async function handleReserve(req, res) {
     return res.json({ widgetUrl: link.url });
   }
 
-  if (method === 'POST') {
+if (method === 'POST') {
     const { link, action } = req.body;
+
     if (action === 'paid') {
       try {
-        const { data: linkData } = await supabase.from('payment_links').select('wallet_address, amount').eq('url', link).single();
-        if (!linkData?.wallet_address) return res.status(404).json({ verified: false, error: "Wallet not found." });
+        const { data: linkData } = await supabase.from('payment_links')
+          .select('id, wallet_address, amount')
+          .eq('url', link).single();
 
-        const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=0xdac17f958d2ee523a2206206994597c13d831ec7&address=${linkData.wallet_address}&tag=latest&apikey=${process.env.ETHERSCAN_API_KEY}`;
+        if (!linkData?.wallet_address) return res.status(404).json({ verified: false, error: "Link not found." });
+
+        const apiKey = process.env.ETHERSCAN_API_KEY;
+        const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=0xdac17f958d2ee523a2206206994597c13d831ec7&address=${linkData.wallet_address}&tag=latest&apikey=${apiKey}`;
+        
         const response = await axios.get(url);
-        const balance = parseFloat(response.data.result) / 1000000; // USDT has 6 decimals
+        const balance = parseFloat(response.data.result) / 1000000;
 
         if (balance >= linkData.amount) {
-          await supabase.from('payment_links').update({ status: 'used' }).eq('url', link);
+          // 1. Success path: Mark as USED
+          await supabase.from('payment_links').update({ status: 'used', reserved_at: null }).eq('id', linkData.id);
           return res.json({ success: true, verified: true });
+        } else {
+          // 2. Failure path: Payment not found, RELEASE the link back to the pool
+          await supabase.from('payment_links').update({ status: 'available', reserved_at: null }).eq('id', linkData.id);
+          
+          return res.status(400).json({ 
+            verified: false, 
+            error: `Blockchain balance is 0. Link has been released back to the pool.` 
+          });
         }
-        return res.status(400).json({ verified: false, error: `Balance is ${balance} USDT. Required: ${linkData.amount} USDT.` });
       } catch (err) {
-        return res.status(500).json({ verified: false, error: "Blockchain check failed." });
+        return res.status(500).json({ verified: false, error: "Verification failed." });
       }
     }
     if (action === 'cancel') {

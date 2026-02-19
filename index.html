@@ -325,32 +325,42 @@
 
     // "Yes, I Paid" handler with verification
     getEl('paidBtn').onclick = async () => {
-        if (!state.currentLink) return;
-        const statusEl = getEl('status');
-        const paidBtn = getEl('paidBtn');
-        
-        paidBtn.disabled = true;
-        if (statusEl) statusEl.textContent = "Verifying USDT transfer... (Wait 20s)";
+            if (!state.currentLink) return;
+            const statusEl = getEl('status');
+            const paidBtn = getEl('paidBtn');
+            
+            // 1. Lock UI while checking
+            paidBtn.disabled = true;
+            if (statusEl) {
+                statusEl.textContent = "Verifying USDT transfer... (Wait 20s)";
+                statusEl.style.color = "#0088cc";
+            }
 
-        try {
-            const res = await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ link: state.currentLink, action: 'paid' })
-            });
-            const data = await res.json();
-            if (data.verified) {
-                finishFlow(true);
-            } else {
+            try {
+                const res = await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ link: state.currentLink, action: 'paid' })
+                });
+
+                const data = await res.json();
+
+                if (data.verified) {
+                    // Success: Show the standard success page
+                    finishFlow(true);
+                } else {
+                    // Failure: Payment not received yet
+                    paidBtn.disabled = false;
+                    // Display the same message we used to, but with the specific reason
+                    tg.showAlert(data.error || "Payment not detected yet. Please ensure you sent USDT (ERC-20).");
+                    if (statusEl) statusEl.textContent = "";
+                }
+            } catch (e) {
                 paidBtn.disabled = false;
-                tg.showAlert(data.error || "Payment not found.");
+                tg.showAlert("Network error. Try again shortly.");
                 if (statusEl) statusEl.textContent = "";
             }
-        } catch (e) {
-            paidBtn.disabled = false;
-            tg.showAlert("Network error.");
-        }
-    };
+        };
 
     getEl('cancelBtn').onclick = async () => {
         if (!state.currentLink) return;
