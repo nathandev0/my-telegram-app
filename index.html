@@ -240,7 +240,6 @@
     const tg = window.Telegram.WebApp;
     tg.ready(); tg.expand();
 
-    // Use a unified state object to avoid ReferenceErrors
     const state = {
         currentLink: null,
         isFlowActive: false,
@@ -251,7 +250,6 @@
     const COOLDOWN_KEY = `cooldown_${state.userId}`;
     const COOLDOWN_MS = 40000;
 
-    // Helper to get fresh elements (prevents null references)
     const getEl = (id) => document.getElementById(id);
 
     async function fetchAvailability() {
@@ -323,36 +321,40 @@
         }
     }
 
-    if (action === 'paid') {
-          try {
-            const { data: linkData } = await supabase.from('payment_links')
-              .select('id, wallet_address, amount')
-              .eq('url', link).single();
+    // --- FIXED: This is the proper FRONTEND handler for the Yes button ---
+    getEl('paidBtn').onclick = async () => {
+        if (!state.currentLink) return;
+        const statusEl = getEl('status');
+        const paidBtn = getEl('paidBtn');
+        
+        paidBtn.disabled = true;
+        if (statusEl) statusEl.textContent = "Verifying USDT transfer... (Wait 20s)";
 
-            if (!linkData?.wallet_address) return res.status(404).json({ verified: false, error: "Link not found." });
-
-            const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=0xdac17f958d2ee523a2206206994597c13d831ec7&address=${linkData.wallet_address}&tag=latest&apikey=${process.env.ETHERSCAN_API_KEY}`;
+        try {
+            const res = await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ link: state.currentLink, action: 'paid' })
+            });
+            const data = await res.json();
             
-            const response = await axios.get(url);
-            const balance = parseFloat(response.data.result) / 1000000;
-
-            if (balance >= linkData.amount) {
-              // Path A: SUCCESS - Mark as used permanently
-              await supabase.from('payment_links').update({ status: 'used', reserved_at: null }).eq('id', linkData.id);
-              return res.json({ success: true, verified: true });
+            if (data.verified) {
+                // Display the "Thank You" card (Success Page)
+                finishFlow(true);
             } else {
-              // Path B: FAILURE - Release link back to available pool
-              await supabase.from('payment_links').update({ status: 'available', reserved_at: null }).eq('id', linkData.id);
-              
-              return res.status(400).json({ 
-                verified: false, 
-                error: "Payment not found. The link has been returned to the pool for others to use." 
-              });
+                // Verification failed - The backend already returned link to pool
+                paidBtn.disabled = false;
+                tg.showAlert(data.error || "Payment not found. The link has been released.", () => {
+                    tg.close(); // Close app so they start over if link was released
+                });
+                if (statusEl) statusEl.textContent = "";
             }
-          } catch (err) {
-            return res.status(500).json({ verified: false, error: "Blockchain verification failed. Try again." });
-          }
+        } catch (e) {
+            paidBtn.disabled = false;
+            tg.showAlert("Network error.");
+            if (statusEl) statusEl.textContent = "";
         }
+    };
 
     getEl('cancelBtn').onclick = async () => {
         if (!state.currentLink) return;
@@ -365,26 +367,25 @@
     };
 
     function finishFlow(success) {
-            getEl('confirmCard').classList.remove('show'); // Hide the question
-            state.isFlowActive = true; // Keep buttons locked in background
+        getEl('confirmCard').classList.remove('show');
+        state.isFlowActive = true; 
 
-            if (success) {
-                // This is your "Thank You Card"
-                getEl('successPage').classList.add('show'); 
-                let s = 5;
-                const t = setInterval(() => { 
-                    getEl('successTimer').textContent = --s;
-                    if (s <= 0) { clearInterval(t); tg.close(); }
-                }, 1000);
-            } else {
-                getEl('releasedPage').classList.add('show');
-                let s = 4;
-                const t = setInterval(() => { 
-                    getEl('releaseTimer').textContent = --s;
-                    if (s <= 0) { clearInterval(t); tg.close(); }
-                }, 1000);
-            }
+        if (success) {
+            getEl('successPage').classList.add('show'); 
+            let s = 5;
+            const t = setInterval(() => { 
+                getEl('successTimer').textContent = --s;
+                if (s <= 0) { clearInterval(t); tg.close(); }
+            }, 1000);
+        } else {
+            getEl('releasedPage').classList.add('show');
+            let s = 4;
+            const t = setInterval(() => { 
+                getEl('releaseTimer').textContent = --s;
+                if (s <= 0) { clearInterval(t); tg.close(); }
+            }, 1000);
         }
+    }
 
     renderButtons();
     setInterval(() => { if (!state.isFlowActive) renderButtons(); }, 5000);
