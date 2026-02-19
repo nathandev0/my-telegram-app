@@ -18,13 +18,19 @@ async function handleReserve(req, res) {
       }, {});
       return res.json({ availability: counts });
     }
-    // Standard reservation logic...
+    
     const { data: link, error } = await supabase.from('payment_links').select('*')
       .eq('amount', amount)
       .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecondsAgo})`)
       .limit(1).single();
+
     if (error || !link) return res.status(404).json({ error: "No links available." });
-    await supabase.from('payment_links').update({ status: 'reserved', reserved_at: new Date().toISOString() }).eq('id', link.id);
+
+    await supabase.from('payment_links').update({ 
+        status: 'reserved', 
+        reserved_at: new Date().toISOString() 
+    }).eq('id', link.id);
+
     return res.json({ widgetUrl: link.url });
   }
 
@@ -32,33 +38,35 @@ async function handleReserve(req, res) {
     const { link, action } = req.body;
 
     if (action === 'paid') {
-      // 1. Immediately mark as 'used' so the counter drops for everyone else
+      // 1. Mark as 'used' immediately so it's hidden from other users
       await supabase.from('payment_links').update({ status: 'used' }).eq('url', link);
       
-      // 2. Start the delayed check (1 minute)
-      // We don't 'await' this so the response goes back to the user instantly
+      // 2. Background check after 1 minute
       setTimeout(async () => {
         try {
           const { data: linkData } = await supabase.from('payment_links')
             .select('id, wallet_address, amount').eq('url', link).single();
 
+          if (!linkData) return;
+
           const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=0xdac17f958d2ee523a2206206994597c13d831ec7&address=${linkData.wallet_address}&tag=latest&apikey=${process.env.ETHERSCAN_API_KEY}`;
           const response = await axios.get(url);
           const balance = parseFloat(response.data.result) / 1000000;
 
+          // --- FIX: If balance is low, force the status back to 'reserved' ---
           if (balance < linkData.amount) {
-            // NO PAYMENT FOUND: Put it back in the pool (status: reserved)
-            // It stays 'reserved' for 30s before becoming 'available' via your GET logic
             await supabase.from('payment_links').update({ 
                 status: 'reserved', 
-                reserved_at: new Date().toISOString() 
+                reserved_at: new Date().toISOString() // This gives it 30s before 'GET' makes it available
             }).eq('id', linkData.id);
-            console.log(`Link ${link} returned to pool: Insufficient balance.`);
+            console.log(`Payment failed for ${link}. Link returned to pool.`);
+          } else {
+            console.log(`Payment confirmed for ${link}. Leaving as 'used'.`);
           }
         } catch (err) {
-          console.error("Delayed verification failed:", err.message);
+          console.error("Background check error:", err.message);
         }
-      }, 60000); // 60,000ms = 1 minute
+      }, 60000);
 
       return res.json({ success: true });
     }

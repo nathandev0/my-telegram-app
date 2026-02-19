@@ -428,16 +428,18 @@
     
     // Setup button click listeners
     document.getElementById('paidBtn').onclick = async () => {
-      if (!currentLink) return;
+      if (!currentLink || document.getElementById('paidBtn').disabled) return;
       
-      // Send signal to backend (backend handles the 1-minute delay)
+      document.getElementById('paidBtn').disabled = true;
+
+      // Notify the server
       fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ link: currentLink, action: 'paid' })
       });
 
-      // Show Thank You message IMMEDIATELY
+      // Show Thank You message immediately
       finishFlow(true); 
     };
 
