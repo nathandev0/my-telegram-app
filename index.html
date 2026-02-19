@@ -238,10 +238,11 @@
   </footer>
 <script>
     const tg = window.Telegram.WebApp;
-    tg.ready(); tg.expand();
+    tg.ready();
+    tg.expand();
 
-    const state = { currentLink: null, isFlowActive: false };
-    const getEl = (id) => document.getElementById(id);
+    let currentLink = null;
+    let isFlowActive = false;
 
     async function fetchAvailability() {
       try {
@@ -252,7 +253,7 @@
     }
 
     async function renderButtons() {
-      const grid = getEl('buttons');
+      const grid = document.getElementById('buttons');
       if (!grid) return;
 
       const availability = await fetchAvailability();
@@ -262,7 +263,8 @@
         const btn = document.createElement('button');
         btn.className = 'donation-btn';
         const count = availability[amount] || 0;
-        const disabled = count === 0 || state.isFlowActive;
+        const disabled = count === 0 || isFlowActive;
+        
         btn.disabled = disabled;
         btn.innerHTML = `$${amount}${count > 0 ? `<span class="counter">${count}</span>` : ''}`;
         btn.onclick = () => !disabled && reserveAndOpen(amount);
@@ -271,54 +273,59 @@
     }
 
     async function reserveAndOpen(amount) {
-      state.isFlowActive = true;
-      await renderButtons();
+      isFlowActive = true;
+      renderButtons();
       try {
         const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
         const data = await res.json();
-        state.currentLink = data.widgetUrl;
-        tg.openLink(state.currentLink);
-        getEl('confirmCard').classList.add('show');
-      } catch (e) { state.isFlowActive = false; renderButtons(); }
+        
+        currentLink = data.widgetUrl;
+        tg.openLink(currentLink);
+        document.getElementById('confirmCard').classList.add('show');
+      } catch (e) {
+        isFlowActive = false;
+        renderButtons();
+      }
     }
 
-    getEl('paidBtn').onclick = async () => {
-      const btn = getEl('paidBtn');
-      btn.disabled = true;
-      try {
-        const res = await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ link: state.currentLink, action: 'paid' })
-        });
-        const data = await res.json();
-        if (data.verified) {
-            finishFlow(true); // Shows Thank You card
-        } else {
-            tg.showAlert(data.error || "Not paid.", () => tg.close());
-        }
-      } catch (e) { btn.disabled = false; }
+    document.getElementById('paidBtn').onclick = async () => {
+      if (!currentLink) return;
+      await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ link: currentLink, action: 'paid' })
+      });
+      finishFlow(true);
     };
 
-    getEl('cancelBtn').onclick = async () => {
+    document.getElementById('cancelBtn').onclick = async () => {
+      if (!currentLink) return;
       await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ link: state.currentLink, action: 'cancel' })
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ link: currentLink, action: 'cancel' })
       });
       finishFlow(false);
     };
 
     function finishFlow(success) {
-      getEl('confirmCard').classList.remove('show');
-      const page = success ? getEl('successPage') : getEl('releasedPage');
-      const timerEl = success ? getEl('successTimer') : getEl('releaseTimer');
+      document.getElementById('confirmCard').classList.remove('show');
+      const page = success ? document.getElementById('successPage') : document.getElementById('releasedPage');
+      const timerEl = success ? document.getElementById('successTimer') : document.getElementById('releaseTimer');
+      
       page.classList.add('show');
       let s = success ? 5 : 4;
-      const t = setInterval(() => { timerEl.textContent = --s; if (s <= 0) { clearInterval(t); tg.close(); } }, 1000);
+      const t = setInterval(() => {
+        timerEl.textContent = --s;
+        if (s <= 0) {
+          clearInterval(t);
+          tg.close();
+        }
+      }, 1000);
     }
 
     renderButtons();
-    setInterval(() => { if (!state.isFlowActive) renderButtons(); }, 5000);
+    setInterval(() => { if (!isFlowActive) renderButtons(); }, 5000);
 </script>
 </body>
 </html>

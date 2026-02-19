@@ -1,21 +1,23 @@
 const { createClient } = require('@supabase/supabase-js');
-const axios = require('axios');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 async function handleReserve(req, res) {
   const method = req.method;
-  const thirtySecondsAgo = new Date(Date.now() - 30 * 1000).toISOString();
 
   if (method === 'GET') {
     const { all, amount } = req.query;
 
+    // 30-second reservation window
+    const thirtySecondsAgo = new Date(Date.now() - 30 * 1000).toISOString();
+
     if (all === 'true') {
       const { data } = await supabase.from('payment_links').select('amount')
         .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecondsAgo})`);
-      const counts = data.reduce((acc, curr) => { 
-        acc[curr.amount] = (acc[curr.amount] || 0) + 1; 
-        return acc; 
+      
+      const counts = data.reduce((acc, curr) => {
+        acc[curr.amount] = (acc[curr.amount] || 0) + 1;
+        return acc;
       }, {});
       return res.json({ availability: counts });
     }
@@ -37,35 +39,14 @@ async function handleReserve(req, res) {
 
   if (method === 'POST') {
     const { link, action } = req.body;
+    // Trust system: 'paid' makes it 'used', 'cancel' makes it 'available'
+    const newStatus = (action === 'paid') ? 'used' : 'available';
+    
+    await supabase.from('payment_links')
+      .update({ status: newStatus, reserved_at: null })
+      .eq('url', link);
 
-    if (action === 'paid') {
-      try {
-        const { data: linkData } = await supabase.from('payment_links')
-          .select('id, wallet_address, amount').eq('url', link).single();
-
-        const wallet = linkData.wallet_address.toLowerCase();
-        const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=0xdac17f958d2ee523a2206206994597c13d831ec7&address=${wallet}&tag=latest&apikey=${process.env.ETHERSCAN_API_KEY}`;
-        
-        const response = await axios.get(url);
-        const balance = parseFloat(response.data.result) / 1000000;
-
-        if (balance >= linkData.amount) {
-          await supabase.from('payment_links').update({ status: 'used', reserved_at: null }).eq('id', linkData.id);
-          return res.json({ verified: true });
-        } else {
-          // RELEASE back to pool because payment wasn't found
-          await supabase.from('payment_links').update({ status: 'available', reserved_at: null }).eq('id', linkData.id);
-          return res.status(400).json({ verified: false, error: "Payment not found. Link returned to pool." });
-        }
-      } catch (err) {
-        return res.status(500).json({ error: "Verification failed." });
-      }
-    }
-
-    if (action === 'cancel') {
-      await supabase.from('payment_links').update({ status: 'available', reserved_at: null }).eq('url', link);
-      return res.json({ success: true });
-    }
+    return res.json({ success: true });
   }
 }
 
