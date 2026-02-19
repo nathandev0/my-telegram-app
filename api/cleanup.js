@@ -49,8 +49,7 @@ module.exports = async (req, res) => {
         await sendTelegramAlert(`❌ <b>PAYMENT FAILED</b>\nReturned to pool: $${link.amount}\nWallet: <code>${link.wallet_address}</code>`);
       }
     }
-
-    return res.json({ status: "success", checked: pendingLinks.length, verified, restored });
+    return res.json({ status: "success", processed: pendingLinks.length });
   } catch (err) {
     return res.status(500).json({ status: "error", message: err.message });
   }
