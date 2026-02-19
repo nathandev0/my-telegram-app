@@ -43,7 +43,9 @@ async function handleReserve(req, res) {
         const { data: linkData } = await supabase.from('payment_links')
           .select('id, wallet_address, amount').eq('url', link).single();
 
-        const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=0xdac17f958d2ee523a2206206994597c13d831ec7&address=${linkData.wallet_address}&tag=latest&apikey=${process.env.ETHERSCAN_API_KEY}`;
+        const wallet = linkData.wallet_address.toLowerCase();
+        const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=0xdac17f958d2ee523a2206206994597c13d831ec7&address=${wallet}&tag=latest&apikey=${process.env.ETHERSCAN_API_KEY}`;
+        
         const response = await axios.get(url);
         const balance = parseFloat(response.data.result) / 1000000;
 
@@ -51,7 +53,7 @@ async function handleReserve(req, res) {
           await supabase.from('payment_links').update({ status: 'used', reserved_at: null }).eq('id', linkData.id);
           return res.json({ verified: true });
         } else {
-          // RELEASE back to pool
+          // RELEASE back to pool because payment wasn't found
           await supabase.from('payment_links').update({ status: 'available', reserved_at: null }).eq('id', linkData.id);
           return res.status(400).json({ verified: false, error: "Payment not found. Link returned to pool." });
         }
