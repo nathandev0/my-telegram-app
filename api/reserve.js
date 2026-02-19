@@ -2,13 +2,17 @@
 const { createClient } = require('@supabase/supabase-js');
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
+// Helper function for alerts
 async function sendTelegramAlert(message) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.ADMIN_CHAT_ID;
-  const url = `https://api.telegram.org/bot${token}/sendMessage`;
   try {
-    await axios.post(url, { chat_id: chatId, text: message, parse_mode: 'HTML' });
-  } catch (e) { console.error("TG Alert Failed", e.message); }
+    await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      chat_id: process.env.ADMIN_CHAT_ID,
+      text: message,
+      parse_mode: 'HTML'
+    });
+  } catch (e) {
+    console.error("TG Alert Error:", e.message);
+  }
 }
 
 async function handleReserve(req, res) {
@@ -50,6 +54,12 @@ async function handleReserve(req, res) {
     const { link, action } = req.body;
 
     if (action === 'paid') {
+
+      // 1. Fetch details for the alert before updating
+      const { data: linkData } = await supabase.from('payment_links')
+        .select('*').eq('url', link).single();
+      
+      // 2. Update DB
       // Mark as USED and set IS_VERIFIED to false.
       // This "locks" the link for 5 minutes until cleanup.js checks it.
       await supabase.from('payment_links').update({ 
@@ -58,8 +68,8 @@ async function handleReserve(req, res) {
         reserved_at: new Date().toISOString() 
       }).eq('url', link);
       
-      // Send the "Somebody claimed payment" message
-      sendTelegramAlert(`🔔 <b>New Payment Claim</b>\nAmount: $${linkData.amount}\nWallet: <code>${linkData.wallet_address}</code>\n\n<i>Verification will start in 5 minutes...</i>`);
+      // 3. Send Alert
+      await sendTelegramAlert(`🔔 <b>Payment Claimed</b>\nAmount: $${linkData.amount}\nWallet: <code>${linkData.wallet_address}</code>\n\n<i>Janitor will check this in 5 minutes.</i>`);
 
       return res.json({ success: true });
     }
@@ -71,7 +81,6 @@ async function handleReserve(req, res) {
         reserved_at: null,
         is_verified: false 
       }).eq('url', link);
-      
       return res.json({ success: true });
     }
   }
