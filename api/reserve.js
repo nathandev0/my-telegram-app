@@ -51,6 +51,11 @@ async function sendTelegramAlert(message) {
           return res.status(404).json({ error: "Try again later" });
         }
 
+        // If availability for an amount drops below 5, send a warning
+        if (availCount < 1) {
+          await sendTelegramAlert(`⚠️ <b>LOW STOCK ALERT</b>\nOnly ${availCount} links left for $${amount}!`);
+        }
+
         // Success! The database has already marked it as 'reserved' and returned the URL
         return res.json({ widgetUrl: selectedLink.url });
       }

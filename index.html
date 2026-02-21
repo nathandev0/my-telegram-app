@@ -206,6 +206,9 @@
 
     <div class="confirm-card" id="confirmCard">
       <h3>Did you complete the payment?</h3>
+      <div id="paymentTimer" style="font-size: 14px; color: #e53935; font-weight: 600; margin-bottom: 12px;">
+        Link expires in: <span id="paymentTimerSeconds">30</span>s
+      </div>
       <button class="yes-btn" id="paidBtn">
         <span style="font-size:20px;">✅</span> Yes, I paid
       </button>
@@ -336,6 +339,8 @@
         }
     }
 
+    let paymentCountdown = null; // Global variable to store the interval
+
     async function reserveAndOpen(amount) {
         isInitialLoad = false; // Ensure text stays hidden during this session
         localStorage.setItem(COOLDOWN_KEY, Date.now() + COOLDOWN_MS);
@@ -367,7 +372,11 @@
             currentLink = data.widgetUrl;
             await renderButtons(); // Update counter
             tg.openLink(currentLink);
-            if (confirmCard) confirmCard.classList.add('show');
+
+            if (confirmCard) {
+                confirmCard.classList.add('show');
+                startPaymentTimer(30); // Start the 30s countdown
+            }
             
         } catch (e) {
             tg.showAlert('Connection error.');
@@ -375,6 +384,36 @@
             renderButtons();
         }
     }
+
+  function startPaymentTimer(seconds) {
+      const timerDisplay = document.getElementById('paymentTimerSeconds');
+      let remaining = seconds;
+      
+      // Clear any existing timer first
+      if (paymentCountdown) clearInterval(paymentCountdown);
+
+      paymentCountdown = setInterval(() => {
+          remaining--;
+          if (timerDisplay) timerDisplay.textContent = remaining;
+
+          if (remaining <= 0) {
+              clearInterval(paymentCountdown);
+              // Auto-trigger the "No/Release" logic if they don't answer
+              handleAutoRelease();
+          }
+      }, 1000);
+  }
+
+  async function handleAutoRelease() {
+      if (!currentLink) return;
+      // Notify server to release
+      await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ link: currentLink, action: 'cancel' })
+      });
+      finishFlow(false); // Show the "No worries" page
+  }
 
     function startCountdown(el, seconds, onComplete) {
         if(!el) {
@@ -420,6 +459,7 @@
     
     // Setup button click listeners
     document.getElementById('paidBtn').onclick = async () => {
+        if (paymentCountdown) clearInterval(paymentCountdown); // STOP THE TIMER
         if (!currentLink || document.getElementById('paidBtn').disabled) return;
         
         document.getElementById('paidBtn').disabled = true;
@@ -450,6 +490,7 @@
     const cancelBtn = document.getElementById('cancelBtn');
     if (cancelBtn) {
         cancelBtn.onclick = async () => {
+            if (paymentCountdown) clearInterval(paymentCountdown); // STOP THE TIMER
             if (!currentLink) return;
             await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
                 method: 'POST',
