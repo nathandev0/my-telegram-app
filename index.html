@@ -88,8 +88,11 @@
       font-size: 15px;
       text-align: center;
       min-height: 24px;
-      margin: 16px 0; /* Adds a bit of space around the anti-spam timer */
-      transition: color 0.3s ease;
+      margin: 16px 0;
+      transition: opacity 0.3s ease;
+      /* Fixed Styles */
+      color: var(--tg-theme-button-color, #0088cc); /* Permanent Blue */
+      font-weight: 600; 
     }
 
     .confirm-card, .success-page, .released-page {
@@ -296,8 +299,6 @@
             // Only show timer if the payment flow isn't active
             if (isOnCooldown && isInitialLoad && !isCardVisible && !isFlowActive) {
                 statusEl.textContent = `Anti-spam active: Wait ${Math.ceil(remaining / 1000)}s`;
-                statusEl.style.color = "#ff9500";
-                statusEl.style.fontWeight = "600";
             } 
             else if (!isFlowActive && !isCardVisible) {
                 statusEl.textContent = "";
@@ -338,7 +339,6 @@
         const statusEl = document.getElementById('status');
         if (statusEl) {
             statusEl.textContent = 'Opening payment link...';
-            statusEl.style.color = "var(--tg-theme-button-color, #0088cc)";
         }
 
         try {
@@ -371,35 +371,32 @@
         }
     }
 
-  function startPaymentCountdown(startTime, totalSeconds) {
+    function startPaymentCountdown(startTime, totalSeconds) {
         const statusEl = document.getElementById('status');
-        const endTime = startTime + (totalSeconds * 1000); // Calculate when it SHOULD end
+        const endTime = startTime + (totalSeconds * 1000); 
         
         if (paymentTimerInterval) clearInterval(paymentTimerInterval);
-
-        statusEl.style.color = "#e53935"; 
-        statusEl.style.fontWeight = "700";
 
         paymentTimerInterval = setInterval(() => {
             const now = Date.now();
             const remaining = Math.max(0, Math.ceil((endTime - now) / 1000));
 
+            // Display text only - style is now handled by CSS
             statusEl.textContent = `Time to confirm: ${remaining}s`;
 
             if (remaining <= 0) {
                 clearInterval(paymentTimerInterval);
                 statusEl.textContent = "Link expired!";
                 
-                // Hide card and show released page
+                // Auto-hide card and show released page
                 document.getElementById('confirmCard').classList.remove('show');
                 const releasedPage = document.getElementById('releasedPage');
                 if (releasedPage) {
                     releasedPage.classList.add('show');
-                    // Trigger the 4s close timer as we did before
                     finishFlow(false); 
                 }
             }
-        }, 500); // Check every half second for smoothness
+        }, 500); 
     }
 
     function finishFlow(success) {
