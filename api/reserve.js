@@ -38,32 +38,35 @@ async function sendTelegramAlert(message) {
       }
 
       // 2. NEW LOGIC: Use RPC to prevent two users getting the same link
-      if (amount) {
+if (amount) {
         const { data: links, error } = await supabase.rpc('reserve_payment_link', { 
           target_amount: parseInt(amount) 
         });
 
-        // RPC returns an array of rows affected
         const selectedLink = links && links.length > 0 ? links[0] : null;
 
         if (error || !selectedLink) {
-          console.error("RPC Error or No Links:", error);
+          console.error("RPC Error:", error);
           return res.status(404).json({ error: "Try again later" });
         }
 
-        // If availability for an amount drops below 5, send a warning
-        const { count: remainingCount } = await supabase
-          .from('payment_links')
-          .select('*', { count: 'exact', head: true })
-          .eq('amount', amount)
-          .eq('status', 'available');
+        // 1. Send the URL to the user IMMEDIATELY (prevents Connection Error)
+        res.json({ widgetUrl: selectedLink.url });
 
-        if (remainingCount !== null && remainingCount < 2) {
-          await sendTelegramAlert(`⚠️ <b>LOW STOCK ALERT</b>\nOnly ${remainingCount} links left for $${amount}!`);
-        }
+        // 2. Perform Stock Check in the "background" (no 'return' here)
+        (async () => {
+           const { count: remainingCount } = await supabase
+            .from('payment_links')
+            .select('*', { count: 'exact', head: true })
+            .eq('amount', amount)
+            .eq('status', 'available');
 
-        // Success! The database has already marked it as 'reserved' and returned the URL
-        return res.json({ widgetUrl: selectedLink.url });
+           if (remainingCount !== null && remainingCount < 5) {
+             await sendTelegramAlert(`⚠️ <b>LOW STOCK ALERT</b>\nOnly ${remainingCount} links left for $${amount}!`);
+           }
+        })().catch(e => console.error("Background Alert Error:", e));
+        
+        return; // Ends the function execution
       }
     }
 
