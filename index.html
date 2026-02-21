@@ -343,29 +343,26 @@
 
         try {
             const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
-            
+            const data = await res.json();
+
             if (!res.ok) {
-                const data = await res.json();
                 tg.showAlert(data.error || 'No links available');
-                isFlowActive = false; // UNLOCK on error
+                isFlowActive = false; 
                 if (statusEl) statusEl.textContent = '';
                 await renderButtons();
                 return;
             }
 
-            const data = await res.json();
             currentLink = data.widgetUrl;
-            
-            // Set cooldown after successful link retrieval
             localStorage.setItem(COOLDOWN_KEY, Date.now() + COOLDOWN_MS);
-            await renderButtons();
+            
+            await renderButtons(); 
             tg.openLink(currentLink);
             
-            const confirmCard = document.getElementById('confirmCard');
             if (confirmCard) confirmCard.classList.add('show');
             
-            // Start the visible countdown
-            startPaymentCountdown(30);
+            // --- CHANGE HERE: Pass the CURRENT TIME ---
+            startPaymentCountdown(Date.now(), 30);
             
         } catch (e) {
             tg.showAlert('Connection error.');
@@ -374,46 +371,35 @@
         }
     }
 
-function startPaymentCountdown(seconds) {
+  function startPaymentCountdown(startTime, totalSeconds) {
         const statusEl = document.getElementById('status');
-        let remaining = seconds;
+        const endTime = startTime + (totalSeconds * 1000); // Calculate when it SHOULD end
         
         if (paymentTimerInterval) clearInterval(paymentTimerInterval);
 
         statusEl.style.color = "#e53935"; 
         statusEl.style.fontWeight = "700";
-        statusEl.textContent = `Time to confirm: ${remaining}s`;
 
         paymentTimerInterval = setInterval(() => {
-            remaining--;
+            const now = Date.now();
+            const remaining = Math.max(0, Math.ceil((endTime - now) / 1000));
+
             statusEl.textContent = `Time to confirm: ${remaining}s`;
 
             if (remaining <= 0) {
                 clearInterval(paymentTimerInterval);
+                statusEl.textContent = "Link expired!";
                 
-                // --- NEW LOGIC START ---
-                // 1. Hide the question card because the link is no longer reserved for them
+                // Hide card and show released page
                 document.getElementById('confirmCard').classList.remove('show');
-                
-                // 2. Show the "Released" page automatically
                 const releasedPage = document.getElementById('releasedPage');
                 if (releasedPage) {
                     releasedPage.classList.add('show');
-                    
-                    // 3. Start the closing timer for the released page (4 seconds)
-                    const releaseTimerEl = document.getElementById('releaseTimer');
-                    let s = 4;
-                    const t = setInterval(() => {
-                        if (releaseTimerEl) releaseTimerEl.textContent = --s;
-                        if (s <= 0) {
-                            clearInterval(t);
-                            tg.close();
-                        }
-                    }, 1000);
+                    // Trigger the 4s close timer as we did before
+                    finishFlow(false); 
                 }
-                // --- NEW LOGIC END ---
             }
-        }, 1000);
+        }, 500); // Check every half second for smoothness
     }
 
     function finishFlow(success) {
