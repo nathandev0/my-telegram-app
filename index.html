@@ -248,6 +248,7 @@
     const userId = (tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user.id : 'guest';
     const COOLDOWN_KEY = `cooldown_${userId}`;
     const COOLDOWN_MS = 40000;
+    const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     let isInitialLoad = true; 
 
     let currentLink = null;
@@ -343,22 +344,26 @@
 
         try {
             const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
-            const data = await res.json();
 
             if (!res.ok) {
+                const data = await res.json();
                 tg.showAlert(data.error || 'No links available');
                 isFlowActive = false; 
                 if (statusEl) statusEl.textContent = '';
                 await renderButtons();
                 return;
             }
-
-            currentLink = data.widgetUrl;
-            localStorage.setItem(COOLDOWN_KEY, Date.now() + COOLDOWN_MS);
             
+            const data = await res.json();
+            currentLink = data.widgetUrl;
+            
+            localStorage.setItem(COOLDOWN_KEY, Date.now() + COOLDOWN_MS);
             await renderButtons(); 
+
+            await delay(1000);
             tg.openLink(currentLink);
             
+            const confirmCard = document.getElementById('confirmCard');
             if (confirmCard) confirmCard.classList.add('show');
             
             // --- CHANGE HERE: Pass the CURRENT TIME ---
