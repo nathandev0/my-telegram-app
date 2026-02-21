@@ -38,7 +38,7 @@ async function sendTelegramAlert(message) {
       }
 
       // 2. NEW LOGIC: Use RPC to prevent two users getting the same link
-if (amount) {
+    if (amount) {
         const { data: links, error } = await supabase.rpc('reserve_payment_link', { 
           target_amount: parseInt(amount) 
         });
@@ -57,19 +57,24 @@ if (amount) {
         // We run this in the background so the user gets their link instantly
         (async () => {
           try {
-            const { count: remainingCount } = await supabase
+            const thirtySecAgo = new Date(Date.now() - 30 * 1000).toISOString();
+            
+            // Count "True Available" (Available + Timed-out Reserved)
+            const { count: totalPotentialStock, error: countError } = await supabase
               .from('payment_links')
               .select('*', { count: 'exact', head: true })
               .eq('amount', targetAmount)
-              .eq('status', 'available');
+              .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecAgo})`);
 
-            // Trigger alert if stock is below 2 (you can change this number)
-            if (remainingCount !== null && remainingCount < 1) {
+            if (countError) throw countError;
+
+            // Only alert if the TOTAL potential stock is critically low (e.g., < 2)
+            if (totalPotentialStock !== null && totalPotentialStock < 2) {
               await sendTelegramAlert(
-                `⚠️ <b>LOW STOCK ALERT</b>\n` +
+                `⚠️ <b>CRITICAL LOW STOCK</b>\n` +
                 `Amount: $${targetAmount}\n` +
-                `Remaining: <b>${remainingCount}</b> link(s) left.\n` +
-                `Please refill your link pool soon!`
+                `Available now: <b>${totalPotentialStock}</b>\n` +
+                `<i>Note: This excludes links currently being viewed by users.</i>`
               );
             }
           } catch (e) {
