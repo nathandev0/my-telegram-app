@@ -336,69 +336,44 @@
         }
     }
 
-async function reserveAndOpen(amount) {
-        if (isFlowActive) return;
-        isFlowActive = true;
+    async function reserveAndOpen(amount) {
+        isInitialLoad = false; // Ensure text stays hidden during this session
+        localStorage.setItem(COOLDOWN_KEY, Date.now() + COOLDOWN_MS);
         
+        isFlowActive = true;
+        await renderButtons();
         const statusEl = document.getElementById('status');
-        if (statusEl) statusEl.textContent = 'Securing your link...';
+        const confirmCard = document.getElementById('confirmCard');
+
+        // Set persistent cooldown
+        localStorage.setItem(COOLDOWN_KEY, Date.now() + COOLDOWN_MS);
+        
+        isFlowActive = true;
+        await renderButtons(); 
+        
+        if (statusEl) statusEl.textContent = 'Opening payment link...';
 
         try {
             const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
-            
+            const data = await res.json();
+
             if (!res.ok) {
-                const err = await res.json();
-                tg.showAlert(err.error || 'Failed to get link');
+                tg.showAlert(data.error || 'No links available');
                 isFlowActive = false;
                 renderButtons();
                 return;
             }
 
-            const data = await res.json();
-            
-            // CRITICAL: Save the link BEFORE doing anything else
-            currentLink = data.widgetUrl; 
-            
-            // Now start the UI changes
-            localStorage.setItem(COOLDOWN_KEY, Date.now() + COOLDOWN_MS);
+            currentLink = data.widgetUrl;
+            await renderButtons(); // Update counter
             tg.openLink(currentLink);
+            if (confirmCard) confirmCard.classList.add('show');
             
-            document.getElementById('confirmCard').classList.add('show');
-            startPaymentTimer(30); 
-            if (statusEl) statusEl.textContent = '';
-            
-            await renderButtons(); 
-
         } catch (e) {
-            // If we hit this, the server failed to respond or the JSON was bad
+            tg.showAlert('Connection error.');
             isFlowActive = false;
-            tg.showAlert('Connection error. Please try again.');
-            await renderButtons();
+            renderButtons();
         }
-    }
-
-    function startPaymentTimer(seconds) {
-        const statusEl = document.getElementById('status');
-        let remaining = seconds;
-        
-        // Clear any existing interval to prevent overlapping
-        if (paymentTimerInterval) clearInterval(paymentTimerInterval);
-
-        statusEl.style.color = "#e53935"; // Red color to show urgency
-        statusEl.style.fontWeight = "700";
-        statusEl.textContent = `Time to confirm: ${remaining}s`;
-
-        paymentTimerInterval = setInterval(() => {
-            remaining--;
-            statusEl.textContent = `Time to confirm: ${remaining}s`;
-
-            if (remaining <= 0) {
-                clearInterval(paymentTimerInterval);
-                statusEl.textContent = "Time expired!";
-                // Optional: Auto-cancel if user does nothing
-                // handleAutoCancel(); 
-            }
-        }, 1000);
     }
 
     function startCountdown(el, seconds, onComplete) {
@@ -418,11 +393,12 @@ async function reserveAndOpen(amount) {
         }, 1000);
     }
 
-function finishFlow(success) {
-        // Clear the countdown timer if it's running
-        if (paymentTimerInterval) clearInterval(paymentTimerInterval);
-        
+    function finishFlow(success) {
         document.getElementById('confirmCard').classList.remove('show');
+        
+        // IMPORTANT: Keep isFlowActive = true! 
+        // This stops the 5-second setInterval from overwriting your screen 
+        // while the "Thank You" card is showing.
         isFlowActive = true; 
 
         const page = success ? document.getElementById('successPage') : document.getElementById('releasedPage');

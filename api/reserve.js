@@ -18,61 +18,56 @@ async function sendTelegramAlert(message) {
   }
 }
 
-async function handleReserve(req, res) {
+  async function handleReserve(req, res) {
   const method = req.method;
   const thirtySecAgo = new Date(Date.now() - 30 * 1000).toISOString();
 
   if (method === 'GET') {
-    const { all, amount } = req.query;
+      const { all, amount } = req.query;
 
-    if (all === 'true') {
-      const { data } = await supabase.from('payment_links').select('amount')
-        .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecAgo})`);
-      
-      const counts = data.reduce((acc, curr) => {
-        acc[curr.amount] = (acc[curr.amount] || 0) + 1;
-        return acc;
-      }, {});
-      return res.json({ availability: counts });
-    }
-
-    if (amount) {
-      const { data: links, error } = await supabase.rpc('reserve_payment_link', { 
-        target_amount: parseInt(amount) 
-      });
-
-      const selectedLink = links && links.length > 0 ? links[0] : null;
-
-      if (error || !selectedLink) {
-        return res.status(404).json({ error: "Try again later" });
+      // 1. Keep this for the UI counters
+      if (all === 'true') {
+        const { data } = await supabase.from('payment_links').select('amount')
+          .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecAgo})`);
+        
+        const counts = data.reduce((acc, curr) => {
+          acc[curr.amount] = (acc[curr.amount] || 0) + 1;
+          return acc;
+        }, {});
+        return res.json({ availability: counts });
       }
 
-      // We do a quick count for the alert
-      const { count: remainingCount } = await supabase
-        .from('payment_links')
-        .select('*', { count: 'exact', head: true })
-        .eq('amount', amount)
-        .eq('status', 'available');
+      // 2. NEW LOGIC: Use RPC to prevent two users getting the same link
+      if (amount) {
+        const { data: links, error } = await supabase.rpc('reserve_payment_link', { 
+          target_amount: parseInt(amount) 
+        });
 
-      if (remainingCount !== null && remainingCount < 2) {
-        // We don't await this, so it doesn't slow down the response
-        sendTelegramAlert(`⚠️ <b>LOW STOCK ALERT</b>\nOnly ${remainingCount} links left for $${amount}!`);
+        // RPC returns an array of rows affected
+        const selectedLink = links && links.length > 0 ? links[0] : null;
+
+        if (error || !selectedLink) {
+          console.error("RPC Error or No Links:", error);
+          return res.status(404).json({ error: "Try again later" });
+        }
+
+        // Success! The database has already marked it as 'reserved' and returned the URL
+        return res.json({ widgetUrl: selectedLink.url });
       }
-
-      return res.json({ widgetUrl: selectedLink.url });
     }
-  }
 
-  if (method === 'POST') {
-    const { link, action, username } = req.body;
+if (method === 'POST') {
+    const { link, action, username } = req.body; // <--- Receive username
 
     if (action === 'paid') {
+      const { link, username } = req.body; // username comes from index.html
+
       const { data: updatedLink, error: updateError } = await supabase.from('payment_links')
         .update({ 
           status: 'used',
           is_verified: false,
           reserved_at: new Date().toISOString(),
-          claimed_by: username 
+          claimed_by: username // <--- Save it here!
         })
         .eq('url', link)
         .select()
@@ -80,7 +75,6 @@ async function handleReserve(req, res) {
 
       if (updateError) return res.status(500).json({ error: "Update failed" });
 
-      // Send alert and THEN respond
       await sendTelegramAlert(
         `🔔 <b>PAYMENT CLAIMED</b>\n` +
         `User: <b>${username || 'Unknown'}</b>\n` +
@@ -92,13 +86,12 @@ async function handleReserve(req, res) {
     }
 
     if (action === 'cancel') {
+      // If user clicks "No", return it to the pool immediately
       await supabase.from('payment_links').update({ 
         status: 'available', 
         reserved_at: null,
-        is_verified: false,
-        claimed_by: null
+        is_verified: false 
       }).eq('url', link);
-      
       return res.json({ success: true });
     }
   }
