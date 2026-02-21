@@ -38,27 +38,32 @@ module.exports = async (req, res) => {
       const balance = parseFloat(response.data.result) / 1000000;
       const user = link.claimed_by || 'Unknown'; // <--- Get saved username
 
-      if (balance >= link.amount) {
+      const minimumAcceptable = link.amount * 0.90; 
+      const isEnough = balance >= minimumAcceptable;
+
+      if (isEnough) {
         await supabase.from('payment_links').update({ is_verified: true }).eq('id', link.id);
             
             await sendTelegramAlert(
-            `✅ <b>PAYMENT CONFIRMED</b>\n` +
-            `User: <b>${user}</b>\n` + // <--- Added here
-            `Amount: ${balance} USDT\n` +
-            `Wallet: <code>${link.wallet_address}</code>`
+                `✅ <b>PAYMENT CONFIRMED</b>\n` +
+                `User: <b>${user}</b>\n` +
+                `Donation: $${link.amount}\n` +
+                `Received: <b>${balance} USDT</b>\n` +
+                `Wallet: <code>${link.wallet_address}</code>`
             );
         } else {
             await supabase.from('payment_links').update({ 
-            status: 'available', 
-            is_verified: false, 
-            reserved_at: null,
-            claimed_by: null // Clear it so the next person starts fresh
+                status: 'available', 
+                is_verified: false, 
+                reserved_at: null,
+                claimed_by: null 
             }).eq('id', link.id);
 
             await sendTelegramAlert(
             `❌ <b>PAYMENT NOT CONFIRMED</b>\n` +
-            `User: <b>${user}</b>\n` + // <--- Added here
-            `Amount: ${balance} USDT\n` +
+            `User: <b>${user}</b>\n` +
+            `Donation: $${link.amount}\n` +
+            `Received: <b>${balance} USDT</b>\n` +
             `Wallet: <code>${link.wallet_address}</code>`
             );
         }
