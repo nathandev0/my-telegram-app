@@ -374,13 +374,13 @@
         }
     }
 
-    function startPaymentCountdown(seconds) {
+function startPaymentCountdown(seconds) {
         const statusEl = document.getElementById('status');
         let remaining = seconds;
         
         if (paymentTimerInterval) clearInterval(paymentTimerInterval);
 
-        statusEl.style.color = "#e53935"; // Red for urgency
+        statusEl.style.color = "#e53935"; 
         statusEl.style.fontWeight = "700";
         statusEl.textContent = `Time to confirm: ${remaining}s`;
 
@@ -390,7 +390,28 @@
 
             if (remaining <= 0) {
                 clearInterval(paymentTimerInterval);
-                statusEl.textContent = "Link expired!";
+                
+                // --- NEW LOGIC START ---
+                // 1. Hide the question card because the link is no longer reserved for them
+                document.getElementById('confirmCard').classList.remove('show');
+                
+                // 2. Show the "Released" page automatically
+                const releasedPage = document.getElementById('releasedPage');
+                if (releasedPage) {
+                    releasedPage.classList.add('show');
+                    
+                    // 3. Start the closing timer for the released page (4 seconds)
+                    const releaseTimerEl = document.getElementById('releaseTimer');
+                    let s = 4;
+                    const t = setInterval(() => {
+                        if (releaseTimerEl) releaseTimerEl.textContent = --s;
+                        if (s <= 0) {
+                            clearInterval(t);
+                            tg.close();
+                        }
+                    }, 1000);
+                }
+                // --- NEW LOGIC END ---
             }
         }, 1000);
     }
