@@ -22,57 +22,58 @@ async function sendTelegramAlert(message) {
   const method = req.method;
   const thirtySecAgo = new Date(Date.now() - 30 * 1000).toISOString();
 
-  if (method === 'GET') {
-      const { all, amount } = req.query;
+if (method === 'GET') {
+    const { all, amount } = req.query;
 
-      // 1. Keep this for the UI counters
-      if (all === 'true') {
-        const { data } = await supabase.from('payment_links').select('amount')
-          .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecAgo})`);
-        
-        const counts = data.reduce((acc, curr) => {
-          acc[curr.amount] = (acc[curr.amount] || 0) + 1;
-          return acc;
-        }, {});
-        return res.json({ availability: counts });
+    // 1. UI Counters
+    if (all === 'true') {
+      const { data } = await supabase.from('payment_links').select('amount')
+        .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecAgo})`);
+      
+      const counts = data.reduce((acc, curr) => {
+        acc[curr.amount] = (acc[curr.amount] || 0) + 1;
+        return acc;
+      }, {});
+      return res.json({ availability: counts });
+    }
+
+    // 2. Reservation Logic with Atomic Lock
+    if (amount) {
+      const { data: links, error } = await supabase.rpc('reserve_payment_link', { 
+        target_amount: parseInt(amount) 
+      });
+
+      const selectedLink = links && links.length > 0 ? links[0] : null;
+
+      if (error || !selectedLink) {
+        console.error("RPC Error or No Links:", error);
+        return res.status(404).json({ error: "No links available right now." });
       }
 
-      // 2. NEW LOGIC: Use RPC to prevent two users getting the same link
-      if (amount) {
-        const { data: links, error } = await supabase.rpc('reserve_payment_link', { 
-          target_amount: parseInt(amount) 
-        });
+      // SEND RESPONSE IMMEDIATELY - User gets the link now
+      res.json({ widgetUrl: selectedLink.url });
 
-        const selectedLink = links && links.length > 0 ? links[0] : null;
+      // BACKGROUND TASK - Check stock without making the user wait
+      // Wrapping in setImmediate prevents this from blocking the response
+      setImmediate(async () => {
+        try {
+          const { count: remainingCount } = await supabase
+            .from('payment_links')
+            .select('*', { count: 'exact', head: true })
+            .eq('amount', amount)
+            .eq('status', 'available');
 
-        if (error || !selectedLink) {
-          console.error("RPC Error:", error);
-          return res.status(404).json({ error: "Try again later" });
-        }
-
-        // 1. Send the URL to the user and END the request immediately
-        res.json({ widgetUrl: selectedLink.url });
-
-        // 2. Background task: This runs AFTER the response is sent
-        // We wrap it in a try/catch so it can't crash the main process
-        setImmediate(async () => {
-          try {
-            const { count: remainingCount } = await supabase
-              .from('payment_links')
-              .select('*', { count: 'exact', head: true })
-              .eq('amount', amount)
-              .eq('status', 'available');
-
-            if (remainingCount !== null && remainingCount < 5) {
-              await sendTelegramAlert(`⚠️ <b>LOW STOCK ALERT</b>\nOnly ${remainingCount} links left for $${amount}!`);
-            }
-          } catch (bgError) {
-            console.error("Background Alert Error:", bgError);
+          if (remainingCount !== null && remainingCount < 2) {
+            await sendTelegramAlert(`⚠️ <b>LOW STOCK ALERT</b>\nOnly ${remainingCount} links left for $${amount}!`);
           }
-        });
-        
-        return; // Safety exit
-      }
+        } catch (bgErr) {
+          console.error("Background Stock Check Failed:", bgErr.message);
+        }
+      });
+
+      return; // Stop execution here for this request
+    }
+  }
 
 if (method === 'POST') {
     const { link, action, username } = req.body; // <--- Receive username
