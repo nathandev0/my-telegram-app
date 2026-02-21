@@ -237,7 +237,7 @@
     Developed by <a href="https://t.me/nathandev0">@nathandev0</a>
   </footer>
 <script>
-    // 1. SETUP & CONSTANTS
+// 1. SETUP & CONSTANTS
     const tg = window.Telegram.WebApp;
     tg.ready();
     tg.expand();
@@ -245,13 +245,12 @@
     const userId = (tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user.id : 'guest';
     const COOLDOWN_KEY = `cooldown_${userId}`;
     const COOLDOWN_MS = 40000;
-    let isInitialLoad = true; // This tracks if the app was just opened 
+    let isInitialLoad = true; 
 
     let currentLink = null;
     let isFlowActive = false;
+    let paymentTimerInterval = null; // New timer variable
 
-    // 2. DEFINE FUNCTIONS FIRST (This prevents the "ReferenceError")
-    
     function getRemainingCooldown() {
         try {
             const expiry = localStorage.getItem(COOLDOWN_KEY);
@@ -263,7 +262,6 @@
 
     async function fetchAvailability() {
         try {
-            // Updated with your actual Render URL
             const res = await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve?all=true');
             if (!res.ok) return {};
             const data = await res.json();
@@ -281,7 +279,6 @@
         
         if (!grid) return;
 
-        // Show skeletons if first time
         if (grid.innerHTML === '') {
             for (let i = 0; i < 8; i++) {
                 const skeleton = document.createElement('div');
@@ -295,21 +292,19 @@
         const isOnCooldown = remaining > 0;
         const isCardVisible = confirmCard && confirmCard.classList.contains('show');
 
-        // --- UPDATED LOGIC: Only show text on re-entry ---
         if (statusEl) {
-            // Show text ONLY if on cooldown AND it's the initial load (freshly opened)
-            if (isOnCooldown && isInitialLoad && !isCardVisible) {
+            // Only show timer if the payment flow isn't active
+            if (isOnCooldown && isInitialLoad && !isCardVisible && !isFlowActive) {
                 statusEl.textContent = `Anti-spam active: Wait ${Math.ceil(remaining / 1000)}s`;
                 statusEl.style.color = "#ff9500";
                 statusEl.style.fontWeight = "600";
             } 
-            // Hide text if the flow is active or if the user is already interacting
-            else if (isFlowActive || isCardVisible || !isOnCooldown) {
+            else if (!isFlowActive && !isCardVisible) {
                 statusEl.textContent = "";
             }
         }
 
-        grid.innerHTML = ''; // Clear and draw buttons
+        grid.innerHTML = ''; 
 
         [100, 200, 300, 400, 500, 600, 700, 800].forEach(amount => {
             const btn = document.createElement('button');
@@ -322,83 +317,87 @@
 
             btn.innerHTML = `$${amount}${availCount > 0 ? `<span class="counter">${availCount}</span>` : ''}`;
             btn.onclick = () => {
-                isInitialLoad = false; // The user interacted, so it's no longer the "initial load"
+                isInitialLoad = false;
                 if (!btn.disabled) reserveAndOpen(amount);
             };
             grid.appendChild(btn);
         });
 
-        // After the first render finishes, we mark the initial load as done
-        // But we only do this if NOT on cooldown, so if they ARE on cooldown, 
-        // the text stays visible until the timer hits 0.
         if (!isOnCooldown) {
             isInitialLoad = false;
         }
     }
 
     async function reserveAndOpen(amount) {
-        isInitialLoad = false; // Ensure text stays hidden during this session
-        localStorage.setItem(COOLDOWN_KEY, Date.now() + COOLDOWN_MS);
+        if (isFlowActive) return; // Prevent double trigger
         
-        isFlowActive = true;
+        isInitialLoad = false;
+        isFlowActive = true; // Lock UI
         await renderButtons();
+        
         const statusEl = document.getElementById('status');
-        const confirmCard = document.getElementById('confirmCard');
-
-        // Set persistent cooldown
-        localStorage.setItem(COOLDOWN_KEY, Date.now() + COOLDOWN_MS);
-        
-        isFlowActive = true;
-        await renderButtons(); 
-        
-        if (statusEl) statusEl.textContent = 'Opening payment link...';
+        if (statusEl) {
+            statusEl.textContent = 'Opening payment link...';
+            statusEl.style.color = "var(--tg-theme-button-color, #0088cc)";
+        }
 
         try {
             const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
-            const data = await res.json();
-
+            
             if (!res.ok) {
+                const data = await res.json();
                 tg.showAlert(data.error || 'No links available');
-                isFlowActive = false;
-                renderButtons();
+                isFlowActive = false; // UNLOCK on error
+                await renderButtons();
                 return;
             }
 
+            const data = await res.json();
             currentLink = data.widgetUrl;
-            await renderButtons(); // Update counter
+            
+            // Set cooldown after successful link retrieval
+            localStorage.setItem(COOLDOWN_KEY, Date.now() + COOLDOWN_MS);
+            
             tg.openLink(currentLink);
+            
+            const confirmCard = document.getElementById('confirmCard');
             if (confirmCard) confirmCard.classList.add('show');
+            
+            // Start the visible countdown
+            startPaymentCountdown(30);
             
         } catch (e) {
             tg.showAlert('Connection error.');
-            isFlowActive = false;
-            renderButtons();
+            isFlowActive = false; // UNLOCK on error
+            await renderButtons();
         }
     }
 
-    function startCountdown(el, seconds, onComplete) {
-        if(!el) {
-            if(onComplete) onComplete();
-            return;
-        }
+    function startPaymentCountdown(seconds) {
+        const statusEl = document.getElementById('status');
         let remaining = seconds;
-        el.textContent = remaining;
-        const interval = setInterval(() => {
+        
+        if (paymentTimerInterval) clearInterval(paymentTimerInterval);
+
+        statusEl.style.color = "#e53935"; // Red for urgency
+        statusEl.style.fontWeight = "700";
+        statusEl.textContent = `Time to confirm: ${remaining}s`;
+
+        paymentTimerInterval = setInterval(() => {
             remaining--;
-            el.textContent = remaining;
+            statusEl.textContent = `Time to confirm: ${remaining}s`;
+
             if (remaining <= 0) {
-                clearInterval(interval);
-                if(onComplete) onComplete(); // This triggers the tg.close()
+                clearInterval(paymentTimerInterval);
+                statusEl.textContent = "Link expired!";
             }
         }, 1000);
     }
 
     function finishFlow(success) {
-        document.getElementById('confirmCard').classList.remove('show');
+        if (paymentTimerInterval) clearInterval(paymentTimerInterval);
         
-        // IMPORTANT: Keep isFlowActive = true! 
-        // This stops the 5-second setInterval from overwriting your screen 
-        // while the "Thank You" card is showing.
+        document.getElementById('confirmCard').classList.remove('show');
         isFlowActive = true; 
 
         const page = success ? document.getElementById('successPage') : document.getElementById('releasedPage');
@@ -416,23 +415,14 @@
         }, 1000);
     }
 
-    // 3. INITIALIZE THE APP
-    
-    // Setup button click listeners
     document.getElementById('paidBtn').onclick = async () => {
         if (!currentLink || document.getElementById('paidBtn').disabled) return;
-        
         document.getElementById('paidBtn').disabled = true;
 
-        // RE-FETCH the user data right here
         const user = window.Telegram.WebApp.initDataUnsafe?.user;
-        
-        // Logic: Try Username first, then First Name, then ID, then "Anonymous"
         const username = user?.username ? `@${user.username}` : 
                         user?.first_name ? user.first_name : 
                         user?.id ? `ID: ${user.id}` : "Anonymous";
-
-        console.log("Captured User:", username); // Check this in your mobile inspect tools
 
         fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
             method: 'POST',
@@ -460,7 +450,6 @@
         };
     }
 
-    // Start the app and the timer
     renderButtons();
     setInterval(() => {
         if (!isFlowActive) renderButtons(); 
