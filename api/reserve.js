@@ -71,10 +71,9 @@ async function sendTelegramAlert(message) {
             // Only alert if the TOTAL potential stock is critically low (e.g., < 2)
             if (totalPotentialStock !== null && totalPotentialStock < 2) {
               await sendTelegramAlert(
-                `⚠️ <b>CRITICAL LOW STOCK</b>\n` +
+                `⚠️ <b>LOW STOCK ALERT</b>\n` +
                 `Amount: $${targetAmount}\n` +
-                `Available now: <b>${totalPotentialStock}</b>\n` +
-                `<i>Note: This excludes links currently being viewed by users.</i>`
+                `Remaining: <b>${totalPotentialStock}</b> link(s) left.\n`
               );
             }
           } catch (e) {
