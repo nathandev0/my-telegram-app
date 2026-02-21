@@ -58,7 +58,7 @@ async function sendTelegramAlert(message) {
           .eq('amount', amount)
           .eq('status', 'available');
 
-        if (remainingCount !== null && remainingCount < 5) {
+        if (remainingCount !== null && remainingCount < 2) {
           await sendTelegramAlert(`⚠️ <b>LOW STOCK ALERT</b>\nOnly ${remainingCount} links left for $${amount}!`);
         }
 
