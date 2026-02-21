@@ -64,7 +64,7 @@ if (amount) {
               .eq('status', 'available');
 
             // Trigger alert if stock is below 2 (you can change this number)
-            if (remainingCount !== null && remainingCount < 2) {
+            if (remainingCount !== null && remainingCount < 1) {
               await sendTelegramAlert(
                 `⚠️ <b>LOW STOCK ALERT</b>\n` +
                 `Amount: $${targetAmount}\n` +
