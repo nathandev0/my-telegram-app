@@ -362,10 +362,9 @@
             // 2. Start the timer RIGHT NOW (Before the delay)
             // This ensures the user sees "Time to confirm: 30s" immediately
             startPaymentCountdown(Date.now(), 30);
+            await delay(1000); 
             const confirmCard = document.getElementById('confirmCard');
             if (confirmCard) confirmCard.classList.add('show');
-            
-            // 3. Wait for 1 second so they see the timer start
             await delay(2000); 
             
             // 4. Open the payment link
