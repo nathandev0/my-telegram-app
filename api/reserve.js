@@ -18,14 +18,13 @@ async function sendTelegramAlert(message) {
   }
 }
 
-  async function handleReserve(req, res) {
+async function handleReserve(req, res) {
   const method = req.method;
   const thirtySecAgo = new Date(Date.now() - 30 * 1000).toISOString();
 
-if (method === 'GET') {
+  if (method === 'GET') {
     const { all, amount } = req.query;
 
-    // 1. UI Counters
     if (all === 'true') {
       const { data } = await supabase.from('payment_links').select('amount')
         .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecAgo})`);
@@ -37,7 +36,6 @@ if (method === 'GET') {
       return res.json({ availability: counts });
     }
 
-    // 2. Reservation Logic with Atomic Lock
     if (amount) {
       const { data: links, error } = await supabase.rpc('reserve_payment_link', { 
         target_amount: parseInt(amount) 
@@ -46,40 +44,29 @@ if (method === 'GET') {
       const selectedLink = links && links.length > 0 ? links[0] : null;
 
       if (error || !selectedLink) {
-        console.error("RPC Error or No Links:", error);
-        return res.status(404).json({ error: "No links available right now." });
+        return res.status(404).json({ error: "Try again later" });
       }
 
-      // SEND RESPONSE IMMEDIATELY - User gets the link now
-      res.json({ widgetUrl: selectedLink.url });
+      // We do a quick count for the alert
+      const { count: remainingCount } = await supabase
+        .from('payment_links')
+        .select('*', { count: 'exact', head: true })
+        .eq('amount', amount)
+        .eq('status', 'available');
 
-      // BACKGROUND TASK - Check stock without making the user wait
-      // Wrapping in setImmediate prevents this from blocking the response
-      setImmediate(async () => {
-        try {
-          const { count: remainingCount } = await supabase
-            .from('payment_links')
-            .select('*', { count: 'exact', head: true })
-            .eq('amount', amount)
-            .eq('status', 'available');
+      if (remainingCount !== null && remainingCount < 2) {
+        // We don't await this, so it doesn't slow down the response
+        sendTelegramAlert(`⚠️ <b>LOW STOCK ALERT</b>\nOnly ${remainingCount} links left for $${amount}!`);
+      }
 
-          if (remainingCount !== null && remainingCount < 2) {
-            await sendTelegramAlert(`⚠️ <b>LOW STOCK ALERT</b>\nOnly ${remainingCount} links left for $${amount}!`);
-          }
-        } catch (bgErr) {
-          console.error("Background Stock Check Failed:", bgErr.message);
-        }
-      });
-
-      return; // Stop execution here for this request
+      return res.json({ widgetUrl: selectedLink.url });
     }
   }
 
-if (method === 'POST') {
+  if (method === 'POST') {
     const { link, action, username } = req.body;
 
     if (action === 'paid') {
-      // 1. Update the record in Supabase
       const { data: updatedLink, error: updateError } = await supabase.from('payment_links')
         .update({ 
           status: 'used',
@@ -91,48 +78,28 @@ if (method === 'POST') {
         .select()
         .single();
 
-      if (updateError) {
-        console.error("Paid Update Error:", updateError);
-        return res.status(500).json({ error: "Update failed" });
-      }
+      if (updateError) return res.status(500).json({ error: "Update failed" });
 
-      // 2. Respond to the user immediately so the Mini App shows the Success screen
-      res.json({ success: true });
+      // Send alert and THEN respond
+      await sendTelegramAlert(
+        `🔔 <b>PAYMENT CLAIMED</b>\n` +
+        `User: <b>${username || 'Unknown'}</b>\n` +
+        `Amount: $${updatedLink.amount}\n` +
+        `Wallet: <code>${updatedLink.wallet_address}</code>`
+      );
 
-      // 3. Send the Telegram alert in the background
-      setImmediate(async () => {
-        try {
-          await sendTelegramAlert(
-            `🔔 <b>PAYMENT CLAIMED</b>\n` +
-            `User: <b>${username || 'Unknown'}</b>\n` +
-            `Amount: $${updatedLink.amount}\n` +
-            `Wallet: <code>${updatedLink.wallet_address}</code>`
-          );
-        } catch (e) {
-          console.error("Telegram Alert Error:", e.message);
-        }
-      });
-      return;
+      return res.json({ success: true });
     }
 
     if (action === 'cancel') {
-      // Immediate response to clear the UI
-      res.json({ success: true });
-
-      // Handle the database update in the background
-      setImmediate(async () => {
-        try {
-          await supabase.from('payment_links').update({ 
-            status: 'available', 
-            reserved_at: null,
-            is_verified: false,
-            claimed_by: null // Reset the user claim
-          }).eq('url', link);
-        } catch (e) {
-          console.error("Cancel Update Error:", e.message);
-        }
-      });
-      return;
+      await supabase.from('payment_links').update({ 
+        status: 'available', 
+        reserved_at: null,
+        is_verified: false,
+        claimed_by: null
+      }).eq('url', link);
+      
+      return res.json({ success: true });
     }
   }
 }

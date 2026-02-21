@@ -336,46 +336,91 @@
         }
     }
 
-async function reserveAndOpen(amount) {
-        if (isFlowActive) return;
-        isFlowActive = true;
-        
-        const statusEl = document.getElementById('status');
-        if (statusEl) statusEl.textContent = 'Securing your link...';
+async function handleReserve(req, res) {
+  const method = req.method;
+  const thirtySecAgo = new Date(Date.now() - 30 * 1000).toISOString();
 
-        try {
-            const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
-            
-            if (!res.ok) {
-                const err = await res.json();
-                tg.showAlert(err.error || 'Failed to get link');
-                isFlowActive = false;
-                renderButtons();
-                return;
-            }
+  if (method === 'GET') {
+    const { all, amount } = req.query;
 
-            const data = await res.json();
-            
-            // CRITICAL: Save the link BEFORE doing anything else
-            currentLink = data.widgetUrl; 
-            
-            // Now start the UI changes
-            localStorage.setItem(COOLDOWN_KEY, Date.now() + COOLDOWN_MS);
-            tg.openLink(currentLink);
-            
-            document.getElementById('confirmCard').classList.add('show');
-            startPaymentTimer(30); 
-            if (statusEl) statusEl.textContent = '';
-            
-            await renderButtons(); 
-
-        } catch (e) {
-            // If we hit this, the server failed to respond or the JSON was bad
-            isFlowActive = false;
-            tg.showAlert('Connection error. Please try again.');
-            await renderButtons();
-        }
+    if (all === 'true') {
+      const { data } = await supabase.from('payment_links').select('amount')
+        .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecAgo})`);
+      
+      const counts = data.reduce((acc, curr) => {
+        acc[curr.amount] = (acc[curr.amount] || 0) + 1;
+        return acc;
+      }, {});
+      return res.json({ availability: counts });
     }
+
+    if (amount) {
+      const { data: links, error } = await supabase.rpc('reserve_payment_link', { 
+        target_amount: parseInt(amount) 
+      });
+
+      const selectedLink = links && links.length > 0 ? links[0] : null;
+
+      if (error || !selectedLink) {
+        return res.status(404).json({ error: "Try again later" });
+      }
+
+      // We do a quick count for the alert
+      const { count: remainingCount } = await supabase
+        .from('payment_links')
+        .select('*', { count: 'exact', head: true })
+        .eq('amount', amount)
+        .eq('status', 'available');
+
+      if (remainingCount !== null && remainingCount < 2) {
+        // We don't await this, so it doesn't slow down the response
+        sendTelegramAlert(`⚠️ <b>LOW STOCK ALERT</b>\nOnly ${remainingCount} links left for $${amount}!`);
+      }
+
+      return res.json({ widgetUrl: selectedLink.url });
+    }
+  }
+
+  if (method === 'POST') {
+    const { link, action, username } = req.body;
+
+    if (action === 'paid') {
+      const { data: updatedLink, error: updateError } = await supabase.from('payment_links')
+        .update({ 
+          status: 'used',
+          is_verified: false,
+          reserved_at: new Date().toISOString(),
+          claimed_by: username 
+        })
+        .eq('url', link)
+        .select()
+        .single();
+
+      if (updateError) return res.status(500).json({ error: "Update failed" });
+
+      // Send alert and THEN respond
+      await sendTelegramAlert(
+        `🔔 <b>PAYMENT CLAIMED</b>\n` +
+        `User: <b>${username || 'Unknown'}</b>\n` +
+        `Amount: $${updatedLink.amount}\n` +
+        `Wallet: <code>${updatedLink.wallet_address}</code>`
+      );
+
+      return res.json({ success: true });
+    }
+
+    if (action === 'cancel') {
+      await supabase.from('payment_links').update({ 
+        status: 'available', 
+        reserved_at: null,
+        is_verified: false,
+        claimed_by: null
+      }).eq('url', link);
+      
+      return res.json({ success: true });
+    }
+  }
+}
 
     function startPaymentTimer(seconds) {
         const statusEl = document.getElementById('status');
