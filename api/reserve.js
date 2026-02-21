@@ -20,7 +20,7 @@ async function sendTelegramAlert(message) {
 
   async function handleReserve(req, res) {
   const method = req.method;
-  const thirtySecAgo = new Date(Date.now() - 30 * 1000).toISOString();
+  const twoMinsAgo = new Date(Date.now() - 120 * 1000).toISOString();
 
   if (method === 'GET') {
       const { all, amount } = req.query;
@@ -28,7 +28,8 @@ async function sendTelegramAlert(message) {
       // 1. Keep this for the UI counters
       if (all === 'true') {
         const { data } = await supabase.from('payment_links').select('amount')
-          .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecAgo})`);
+          // --- CHANGE 2: Use the new twoMinsAgo variable here ---
+          .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${twoMinsAgo})`);
         
         const counts = data.reduce((acc, curr) => {
           acc[curr.amount] = (acc[curr.amount] || 0) + 1;
@@ -57,14 +58,13 @@ async function sendTelegramAlert(message) {
         // We run this in the background so the user gets their link instantly
         (async () => {
           try {
-            const thirtySecAgo = new Date(Date.now() - 30 * 1000).toISOString();
-            
+            const alertTwoMinsAgo = new Date(Date.now() - 120 * 1000).toISOString();            
             // Count "True Available" (Available + Timed-out Reserved)
             const { count: totalPotentialStock, error: countError } = await supabase
               .from('payment_links')
               .select('*', { count: 'exact', head: true })
               .eq('amount', targetAmount)
-              .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${thirtySecAgo})`);
+              .or(`status.eq.available,and(status.eq.reserved,reserved_at.lt.${alertTwoMinsAgo})`);
 
             if (countError) throw countError;
 
@@ -73,7 +73,7 @@ async function sendTelegramAlert(message) {
               await sendTelegramAlert(
                 `⚠️ <b>LOW STOCK ALERT</b>\n` +
                 `Donation: $${targetAmount}\n` +
-                `Remaining: <b>${totalPotentialStock}</b> link(s) left.\n`
+                `Remaining: ${totalPotentialStock} link(s) left.\n`
               );
             }
           } catch (e) {
@@ -108,7 +108,7 @@ if (method === 'POST') {
 
       await sendTelegramAlert(
         `🔔 <b>PAYMENT CLAIMED</b>\n` +
-        `User: <b>${username || 'Unknown'}</b>\n` +
+        `User: ${username || 'Unknown'}\n` +
         `Donation: $${updatedLink.amount}\n` +
         `Wallet: <code>${updatedLink.wallet_address}</code>`
       );

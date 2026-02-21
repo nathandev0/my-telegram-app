@@ -19,17 +19,17 @@ module.exports = async (req, res) => {
   try {
     // FORCE 5 MINUTE GRACE PERIOD
     // We only check links where 'reserved_at' is older than 5 minutes ago
-    const fiveMinsAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const twentyMinsAgo = new Date(Date.now() - 20 * 60 * 1000).toISOString();
 
     const { data: pendingLinks, error: fetchError } = await supabase
       .from('payment_links')
       .select('*')
       .eq('status', 'used')
       .eq('is_verified', false)
-      .lt('reserved_at', fiveMinsAgo); // This is the 5-minute lock
+      .lt('reserved_at', twentyMinsAgo); // This is the 5-minute lock
 
     if (!pendingLinks || pendingLinks.length === 0) {
-      return res.json({ status: "success", message: "No links past the 5-minute grace period yet." });
+        return res.json({ status: "success", message: "No links past the 20-minute grace period yet." });
     }
 
     for (const link of pendingLinks) {
@@ -46,9 +46,9 @@ module.exports = async (req, res) => {
             
             await sendTelegramAlert(
                 `✅ <b>PAYMENT CONFIRMED</b>\n` +
-                `User: <b>${user}</b>\n` +
+                `User: ${user}\n` +
                 `Donation: $${link.amount}\n` +
-                `Received: <b>${balance} USDT</b>\n` +
+                `Received: ${balance} USDT\n` +
                 `Wallet: <code>${link.wallet_address}</code>`
             );
         } else {
@@ -61,9 +61,9 @@ module.exports = async (req, res) => {
 
             await sendTelegramAlert(
             `❌ <b>PAYMENT NOT CONFIRMED</b>\n` +
-            `User: <b>${user}</b>\n` +
+            `User: ${user}\n` +
             `Donation: $${link.amount}\n` +
-            `Received: <b>${balance} USDT</b>\n` +
+            `Received: ${balance} USDT\n` +
             `Wallet: <code>${link.wallet_address}</code>`
             );
         }
