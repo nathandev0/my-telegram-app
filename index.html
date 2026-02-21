@@ -348,6 +348,7 @@
                 const data = await res.json();
                 tg.showAlert(data.error || 'No links available');
                 isFlowActive = false; // UNLOCK on error
+                if (statusEl) statusEl.textContent = '';
                 await renderButtons();
                 return;
             }
@@ -357,7 +358,7 @@
             
             // Set cooldown after successful link retrieval
             localStorage.setItem(COOLDOWN_KEY, Date.now() + COOLDOWN_MS);
-            
+            await renderButtons();
             tg.openLink(currentLink);
             
             const confirmCard = document.getElementById('confirmCard');
