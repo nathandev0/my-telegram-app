@@ -72,7 +72,7 @@ async function sendTelegramAlert(message) {
             if (totalPotentialStock !== null && totalPotentialStock < 3) {
               await sendTelegramAlert(
                 `⚠️ <b>LOW STOCK ALERT</b>\n` +
-                `Amount: $${targetAmount}\n` +
+                `Donation: $${targetAmount}\n` +
                 `Remaining: <b>${totalPotentialStock}</b> link(s) left.\n`
               );
             }
@@ -109,7 +109,7 @@ if (method === 'POST') {
       await sendTelegramAlert(
         `🔔 <b>PAYMENT CLAIMED</b>\n` +
         `User: <b>${username || 'Unknown'}</b>\n` +
-        `Amount: $${updatedLink.amount}\n` +
+        `Donation: $${updatedLink.amount}\n` +
         `Wallet: <code>${updatedLink.wallet_address}</code>`
       );
 
