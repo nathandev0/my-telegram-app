@@ -69,7 +69,7 @@ async function sendTelegramAlert(message) {
             if (countError) throw countError;
 
             // Only alert if the TOTAL potential stock is critically low (e.g., < 2)
-            if (totalPotentialStock !== null && totalPotentialStock < 2) {
+            if (totalPotentialStock !== null && totalPotentialStock < 3) {
               await sendTelegramAlert(
                 `⚠️ <b>LOW STOCK ALERT</b>\n` +
                 `Amount: $${targetAmount}\n` +
