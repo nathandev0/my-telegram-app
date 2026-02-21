@@ -388,14 +388,19 @@
             const now = Date.now();
             const remaining = Math.max(0, Math.ceil((endTime - now) / 1000));
 
-            // Display text only - style is now handled by CSS
-            statusEl.textContent = `Time to confirm: ${remaining}s`;
+            // --- FORMATTING LOGIC ---
+            const minutes = Math.floor(remaining / 60);
+            const seconds = remaining % 60;
+            // padStart adds a '0' if seconds is less than 10 (e.g., 1:05 instead of 1:5)
+            const displaySeconds = seconds.toString().padStart(2, '0');
+            
+            statusEl.textContent = `Time to confirm: ${minutes}:${displaySeconds}s`;
+            // ------------------------
 
             if (remaining <= 0) {
                 clearInterval(paymentTimerInterval);
                 statusEl.textContent = "Link expired!";
                 
-                // Auto-hide card and show released page
                 document.getElementById('confirmCard').classList.remove('show');
                 const releasedPage = document.getElementById('releasedPage');
                 if (releasedPage) {
