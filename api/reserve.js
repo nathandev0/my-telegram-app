@@ -76,42 +76,63 @@ if (method === 'GET') {
   }
 
 if (method === 'POST') {
-    const { link, action, username } = req.body; // <--- Receive username
+    const { link, action, username } = req.body;
 
     if (action === 'paid') {
-      const { link, username } = req.body; // username comes from index.html
-
+      // 1. Update the record in Supabase
       const { data: updatedLink, error: updateError } = await supabase.from('payment_links')
         .update({ 
           status: 'used',
           is_verified: false,
           reserved_at: new Date().toISOString(),
-          claimed_by: username // <--- Save it here!
+          claimed_by: username 
         })
         .eq('url', link)
         .select()
         .single();
 
-      if (updateError) return res.status(500).json({ error: "Update failed" });
+      if (updateError) {
+        console.error("Paid Update Error:", updateError);
+        return res.status(500).json({ error: "Update failed" });
+      }
 
-      await sendTelegramAlert(
-        `🔔 <b>PAYMENT CLAIMED</b>\n` +
-        `User: <b>${username || 'Unknown'}</b>\n` +
-        `Amount: $${updatedLink.amount}\n` +
-        `Wallet: <code>${updatedLink.wallet_address}</code>`
-      );
+      // 2. Respond to the user immediately so the Mini App shows the Success screen
+      res.json({ success: true });
 
-      return res.json({ success: true });
+      // 3. Send the Telegram alert in the background
+      setImmediate(async () => {
+        try {
+          await sendTelegramAlert(
+            `🔔 <b>PAYMENT CLAIMED</b>\n` +
+            `User: <b>${username || 'Unknown'}</b>\n` +
+            `Amount: $${updatedLink.amount}\n` +
+            `Wallet: <code>${updatedLink.wallet_address}</code>`
+          );
+        } catch (e) {
+          console.error("Telegram Alert Error:", e.message);
+        }
+      });
+      return;
     }
 
     if (action === 'cancel') {
-      // If user clicks "No", return it to the pool immediately
-      await supabase.from('payment_links').update({ 
-        status: 'available', 
-        reserved_at: null,
-        is_verified: false 
-      }).eq('url', link);
-      return res.json({ success: true });
+      // Immediate response to clear the UI
+      res.json({ success: true });
+
+      // Handle the database update in the background
+      setImmediate(async () => {
+        try {
+          await supabase.from('payment_links').update({ 
+            status: 'available', 
+            reserved_at: null,
+            is_verified: false,
+            claimed_by: null // Reset the user claim
+          }).eq('url', link);
+        } catch (e) {
+          console.error("Cancel Update Error:", e.message);
+        }
+      });
+      return;
     }
   }
 }
