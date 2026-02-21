@@ -336,50 +336,44 @@
         }
     }
 
-    async function reserveAndOpen(amount) {
-        // Prevent multiple clicks
+async function reserveAndOpen(amount) {
         if (isFlowActive) return;
-
-        isInitialLoad = false;
         isFlowActive = true;
-        await renderButtons();
         
         const statusEl = document.getElementById('status');
-        const confirmCard = document.getElementById('confirmCard');
-        
-        if (statusEl) {
-            statusEl.textContent = 'Opening payment link...';
-            statusEl.style.color = "var(--tg-theme-button-color, #0088cc)";
-        }
+        if (statusEl) statusEl.textContent = 'Securing your link...';
 
         try {
             const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
-            const data = await res.json();
-
+            
             if (!res.ok) {
-                tg.showAlert(data.error || 'No links available');
+                const err = await res.json();
+                tg.showAlert(err.error || 'Failed to get link');
                 isFlowActive = false;
                 renderButtons();
                 return;
             }
 
-            // SUCCESS: Set Anti-spam cooldown
+            const data = await res.json();
+            
+            // CRITICAL: Save the link BEFORE doing anything else
+            currentLink = data.widgetUrl; 
+            
+            // Now start the UI changes
             localStorage.setItem(COOLDOWN_KEY, Date.now() + COOLDOWN_MS);
-            
-            currentLink = data.widgetUrl;
-            await renderButtons(); 
-            
             tg.openLink(currentLink);
             
-            if (confirmCard) confirmCard.classList.add('show');
-            
-            // START THE VISIBLE TIMER
+            document.getElementById('confirmCard').classList.add('show');
             startPaymentTimer(30); 
+            if (statusEl) statusEl.textContent = '';
+            
+            await renderButtons(); 
 
         } catch (e) {
-            tg.showAlert('Connection error.');
+            // If we hit this, the server failed to respond or the JSON was bad
             isFlowActive = false;
-            renderButtons();
+            tg.showAlert('Connection error. Please try again.');
+            await renderButtons();
         }
     }
 

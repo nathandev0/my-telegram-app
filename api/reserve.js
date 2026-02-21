@@ -38,7 +38,7 @@ async function sendTelegramAlert(message) {
       }
 
       // 2. NEW LOGIC: Use RPC to prevent two users getting the same link
-if (amount) {
+      if (amount) {
         const { data: links, error } = await supabase.rpc('reserve_payment_link', { 
           target_amount: parseInt(amount) 
         });
@@ -50,25 +50,29 @@ if (amount) {
           return res.status(404).json({ error: "Try again later" });
         }
 
-        // 1. Send the URL to the user IMMEDIATELY (prevents Connection Error)
+        // 1. Send the URL to the user and END the request immediately
         res.json({ widgetUrl: selectedLink.url });
 
-        // 2. Perform Stock Check in the "background" (no 'return' here)
-        (async () => {
-           const { count: remainingCount } = await supabase
-            .from('payment_links')
-            .select('*', { count: 'exact', head: true })
-            .eq('amount', amount)
-            .eq('status', 'available');
+        // 2. Background task: This runs AFTER the response is sent
+        // We wrap it in a try/catch so it can't crash the main process
+        setImmediate(async () => {
+          try {
+            const { count: remainingCount } = await supabase
+              .from('payment_links')
+              .select('*', { count: 'exact', head: true })
+              .eq('amount', amount)
+              .eq('status', 'available');
 
-           if (remainingCount !== null && remainingCount < 5) {
-             await sendTelegramAlert(`⚠️ <b>LOW STOCK ALERT</b>\nOnly ${remainingCount} links left for $${amount}!`);
-           }
-        })().catch(e => console.error("Background Alert Error:", e));
+            if (remainingCount !== null && remainingCount < 5) {
+              await sendTelegramAlert(`⚠️ <b>LOW STOCK ALERT</b>\nOnly ${remainingCount} links left for $${amount}!`);
+            }
+          } catch (bgError) {
+            console.error("Background Alert Error:", bgError);
+          }
+        });
         
-        return; // Ends the function execution
+        return; // Safety exit
       }
-    }
 
 if (method === 'POST') {
     const { link, action, username } = req.body; // <--- Receive username
