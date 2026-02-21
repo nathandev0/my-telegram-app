@@ -206,9 +206,6 @@
 
     <div class="confirm-card" id="confirmCard">
       <h3>Did you complete the payment?</h3>
-      <div id="paymentTimer" style="font-size: 14px; color: #e53935; font-weight: 600; margin-bottom: 12px;">
-        Link expires in: <span id="paymentTimerSeconds">30</span>s
-      </div>
       <button class="yes-btn" id="paidBtn">
         <span style="font-size:20px;">✅</span> Yes, I paid
       </button>
@@ -339,24 +336,21 @@
         }
     }
 
-    let paymentCountdown = null; // Global variable to store the interval
-
     async function reserveAndOpen(amount) {
-        isInitialLoad = false; // Ensure text stays hidden during this session
-        localStorage.setItem(COOLDOWN_KEY, Date.now() + COOLDOWN_MS);
-        
+        // Prevent multiple clicks
+        if (isFlowActive) return;
+
+        isInitialLoad = false;
         isFlowActive = true;
         await renderButtons();
+        
         const statusEl = document.getElementById('status');
         const confirmCard = document.getElementById('confirmCard');
-
-        // Set persistent cooldown
-        localStorage.setItem(COOLDOWN_KEY, Date.now() + COOLDOWN_MS);
         
-        isFlowActive = true;
-        await renderButtons(); 
-        
-        if (statusEl) statusEl.textContent = 'Opening payment link...';
+        if (statusEl) {
+            statusEl.textContent = 'Opening payment link...';
+            statusEl.style.color = "var(--tg-theme-button-color, #0088cc)";
+        }
 
         try {
             const res = await fetch(`https://my-telegram-app-7bdf.onrender.com/api/reserve?amount=${amount}`);
@@ -369,15 +363,19 @@
                 return;
             }
 
-            currentLink = data.widgetUrl;
-            await renderButtons(); // Update counter
-            tg.openLink(currentLink);
-
-            if (confirmCard) {
-                confirmCard.classList.add('show');
-                startPaymentTimer(30); // Start the 30s countdown
-            }
+            // SUCCESS: Set Anti-spam cooldown
+            localStorage.setItem(COOLDOWN_KEY, Date.now() + COOLDOWN_MS);
             
+            currentLink = data.widgetUrl;
+            await renderButtons(); 
+            
+            tg.openLink(currentLink);
+            
+            if (confirmCard) confirmCard.classList.add('show');
+            
+            // START THE VISIBLE TIMER
+            startPaymentTimer(30); 
+
         } catch (e) {
             tg.showAlert('Connection error.');
             isFlowActive = false;
@@ -385,35 +383,29 @@
         }
     }
 
-  function startPaymentTimer(seconds) {
-      const timerDisplay = document.getElementById('paymentTimerSeconds');
-      let remaining = seconds;
-      
-      // Clear any existing timer first
-      if (paymentCountdown) clearInterval(paymentCountdown);
+    function startPaymentTimer(seconds) {
+        const statusEl = document.getElementById('status');
+        let remaining = seconds;
+        
+        // Clear any existing interval to prevent overlapping
+        if (paymentTimerInterval) clearInterval(paymentTimerInterval);
 
-      paymentCountdown = setInterval(() => {
-          remaining--;
-          if (timerDisplay) timerDisplay.textContent = remaining;
+        statusEl.style.color = "#e53935"; // Red color to show urgency
+        statusEl.style.fontWeight = "700";
+        statusEl.textContent = `Time to confirm: ${remaining}s`;
 
-          if (remaining <= 0) {
-              clearInterval(paymentCountdown);
-              // Auto-trigger the "No/Release" logic if they don't answer
-              handleAutoRelease();
-          }
-      }, 1000);
-  }
+        paymentTimerInterval = setInterval(() => {
+            remaining--;
+            statusEl.textContent = `Time to confirm: ${remaining}s`;
 
-  async function handleAutoRelease() {
-      if (!currentLink) return;
-      // Notify server to release
-      await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ link: currentLink, action: 'cancel' })
-      });
-      finishFlow(false); // Show the "No worries" page
-  }
+            if (remaining <= 0) {
+                clearInterval(paymentTimerInterval);
+                statusEl.textContent = "Time expired!";
+                // Optional: Auto-cancel if user does nothing
+                // handleAutoCancel(); 
+            }
+        }, 1000);
+    }
 
     function startCountdown(el, seconds, onComplete) {
         if(!el) {
@@ -432,12 +424,11 @@
         }, 1000);
     }
 
-    function finishFlow(success) {
-        document.getElementById('confirmCard').classList.remove('show');
+function finishFlow(success) {
+        // Clear the countdown timer if it's running
+        if (paymentTimerInterval) clearInterval(paymentTimerInterval);
         
-        // IMPORTANT: Keep isFlowActive = true! 
-        // This stops the 5-second setInterval from overwriting your screen 
-        // while the "Thank You" card is showing.
+        document.getElementById('confirmCard').classList.remove('show');
         isFlowActive = true; 
 
         const page = success ? document.getElementById('successPage') : document.getElementById('releasedPage');
@@ -459,7 +450,6 @@
     
     // Setup button click listeners
     document.getElementById('paidBtn').onclick = async () => {
-        if (paymentCountdown) clearInterval(paymentCountdown); // STOP THE TIMER
         if (!currentLink || document.getElementById('paidBtn').disabled) return;
         
         document.getElementById('paidBtn').disabled = true;
@@ -490,7 +480,6 @@
     const cancelBtn = document.getElementById('cancelBtn');
     if (cancelBtn) {
         cancelBtn.onclick = async () => {
-            if (paymentCountdown) clearInterval(paymentCountdown); // STOP THE TIMER
             if (!currentLink) return;
             await fetch('https://my-telegram-app-7bdf.onrender.com/api/reserve', {
                 method: 'POST',

@@ -52,6 +52,7 @@ async function sendTelegramAlert(message) {
         }
 
         // If availability for an amount drops below 5, send a warning
+        const availCount = counts[amount] || 0;
         if (availCount < 1) {
           await sendTelegramAlert(`⚠️ <b>LOW STOCK ALERT</b>\nOnly ${availCount} links left for $${amount}!`);
         }
