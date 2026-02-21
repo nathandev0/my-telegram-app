@@ -38,12 +38,11 @@ async function sendTelegramAlert(message) {
       }
 
       // 2. NEW LOGIC: Use RPC to prevent two users getting the same link
-      if (amount) {
+if (amount) {
         const { data: links, error } = await supabase.rpc('reserve_payment_link', { 
           target_amount: parseInt(amount) 
         });
 
-        // RPC returns an array of rows affected
         const selectedLink = links && links.length > 0 ? links[0] : null;
 
         if (error || !selectedLink) {
@@ -51,7 +50,35 @@ async function sendTelegramAlert(message) {
           return res.status(404).json({ error: "Try again later" });
         }
 
-        // Success! The database has already marked it as 'reserved' and returned the URL
+        // --- LOW STOCK ALERT LOGIC ---
+        // We do this AFTER a successful reservation
+        const targetAmount = parseInt(amount);
+
+        // We run this in the background so the user gets their link instantly
+        (async () => {
+          try {
+            const { count: remainingCount } = await supabase
+              .from('payment_links')
+              .select('*', { count: 'exact', head: true })
+              .eq('amount', targetAmount)
+              .eq('status', 'available');
+
+            // Trigger alert if stock is below 2 (you can change this number)
+            if (remainingCount !== null && remainingCount < 2) {
+              await sendTelegramAlert(
+                `⚠️ <b>LOW STOCK ALERT</b>\n` +
+                `Amount: $${targetAmount}\n` +
+                `Remaining: <b>${remainingCount}</b> link(s) left.\n` +
+                `Please refill your link pool soon!`
+              );
+            }
+          } catch (e) {
+            console.error("Stock Check Error:", e.message);
+          }
+        })();
+        // ------------------------------
+
+        // Success! Return the URL to the user
         return res.json({ widgetUrl: selectedLink.url });
       }
     }
