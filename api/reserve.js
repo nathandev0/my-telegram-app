@@ -52,9 +52,14 @@ async function sendTelegramAlert(message) {
         }
 
         // If availability for an amount drops below 5, send a warning
-        const availCount = counts[amount] || 0;
-        if (availCount < 1) {
-          await sendTelegramAlert(`⚠️ <b>LOW STOCK ALERT</b>\nOnly ${availCount} links left for $${amount}!`);
+        const { count: remainingCount } = await supabase
+          .from('payment_links')
+          .select('*', { count: 'exact', head: true })
+          .eq('amount', amount)
+          .eq('status', 'available');
+
+        if (remainingCount !== null && remainingCount < 5) {
+          await sendTelegramAlert(`⚠️ <b>LOW STOCK ALERT</b>\nOnly ${remainingCount} links left for $${amount}!`);
         }
 
         // Success! The database has already marked it as 'reserved' and returned the URL
