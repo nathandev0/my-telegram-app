@@ -247,7 +247,7 @@
 
     const userId = (tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user.id : 'guest';
     const COOLDOWN_KEY = `cooldown_${userId}`;
-    const COOLDOWN_MS = 40000;
+    const COOLDOWN_MS = 60000;
     const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     let isInitialLoad = true; 
 
